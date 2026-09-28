@@ -1,7 +1,18 @@
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../src/config.ts", async (importOriginal) => {
+	const actual = await importOriginal();
+	return {
+		...(actual as Record<string, unknown>),
+		PACKAGE_NAME: "@earendil-works/pi-coding-agent",
+		APP_NAME: "pi",
+		CONFIG_DIR_NAME: ".pi",
+	};
+});
+
 import { shouldRunFirstTimeSetup } from "../src/cli/startup-ui.ts";
 import { ENV_AGENT_DIR } from "../src/config.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";

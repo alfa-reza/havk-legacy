@@ -1,4 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../src/config.ts", async (importOriginal) => {
+	const actual = (await importOriginal()) as Record<string, unknown>;
+	return {
+		...actual,
+		PACKAGE_NAME: "@earendil-works/pi-coding-agent",
+		APP_NAME: "pi",
+		CONFIG_DIR_NAME: ".pi",
+		isOfficialDistribution: (metadata?: { packageName?: string; appName?: string; configDirName?: string }) => {
+			const packageName = metadata?.packageName ?? "@earendil-works/pi-coding-agent";
+			const appName = metadata?.appName ?? "pi";
+			const configDirName = metadata?.configDirName ?? ".pi";
+			return packageName === "@earendil-works/pi-coding-agent" && appName === "pi" && configDirName === ".pi";
+		},
+	};
+});
+
 import {
 	checkForNewPiVersion,
 	comparePackageVersions,

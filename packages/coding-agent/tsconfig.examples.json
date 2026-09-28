@@ -3,8 +3,15 @@
 	"compilerOptions": {
 		"noEmit": true,
 		"paths": {
+			"@alfa-reza/havk": ["./src/index.ts"],
+			"@alfa-reza/havk/experimental/plugin": ["./src/experimental/plugin.ts"],
+			"@alfa-reza/havk/hooks": ["./src/core/hooks/index.ts"],
+			"@alfa-reza/havk/*": ["./src/*"],
 			"@earendil-works/pi-coding-agent": ["./src/index.ts"],
+			"@earendil-works/pi-coding-agent/experimental/plugin": ["./src/experimental/plugin.ts"],
 			"@earendil-works/pi-coding-agent/hooks": ["./src/core/hooks/index.ts"],
+			"@earendil-works/pi-coding-agent/*": ["./src/*"],
+			"@earendil-works/chord": ["../chord/src/index.ts"],
 			"@earendil-works/pi-tui": ["../tui/src/index.ts"],
 			"@earendil-works/pi-ai": ["../ai/src/index.ts"],
 			"typebox": ["../../node_modules/typebox"]

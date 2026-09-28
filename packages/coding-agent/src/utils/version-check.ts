@@ -1,4 +1,5 @@
 import { compare, valid } from "semver";
+import { type DistributionMetadata, isOfficialDistribution } from "../config.ts";
 import { fetchWithRetry } from "./management-http.ts";
 import { getPiUserAgent } from "./pi-user-agent.ts";
 
@@ -94,8 +95,12 @@ export async function getLatestPiVersion(
 	return (await getLatestPiRelease(currentVersion, options))?.version;
 }
 
-export async function checkForNewPiVersion(currentVersion: string): Promise<LatestPiRelease | undefined> {
+export async function checkForNewPiVersion(
+	currentVersion: string,
+	distribution?: DistributionMetadata,
+): Promise<LatestPiRelease | undefined> {
 	if (process.env.PI_SKIP_VERSION_CHECK) return undefined;
+	if (!isOfficialDistribution(distribution)) return undefined;
 
 	try {
 		const latestRelease = await getLatestPiRelease(currentVersion);
