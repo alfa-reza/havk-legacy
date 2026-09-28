@@ -14,6 +14,8 @@ import {
 	untrackDetachedChildPid,
 } from "../../utils/shell.ts";
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
+import { detectSudo } from "../sudo/detector.ts";
+import { HavkPrivilegeManager } from "../sudo/privilege-manager.ts";
 import { OutputAccumulator } from "./output-accumulator.ts";
 import { BASH_UPDATE_THROTTLE_MS, createShellRenderers } from "./renderers/bash.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
@@ -256,6 +258,23 @@ export function createShellToolDefinition(
 				exposeSessionEnvironment,
 				ctx,
 			);
+
+			// Havk Local Sudo Gate at final execution boundary
+			const sudoDetection = detectSudo(spawnContext.command);
+			if (sudoDetection.hasSudo) {
+				if (sudoDetection.blocked) {
+					throw new Error(sudoDetection.blockReason);
+				}
+				// Sanitize startup environment injection variables for privileged execution
+				delete spawnContext.env.BASH_ENV;
+				delete spawnContext.env.ENV;
+
+				const auth = await HavkPrivilegeManager.getInstance().requestAuthorization(spawnContext.command, signal);
+				if (!auth.approved) {
+					throw new Error(auth.reason ?? "Sudo access denied by the user.");
+				}
+			}
+
 			const output = new OutputAccumulator({ tempFilePrefix: config.tempFilePrefix });
 			let acceptingOutput = true;
 			let updateTimer: NodeJS.Timeout | undefined;
