@@ -19,6 +19,7 @@ import {
 	type Session,
 } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
+import { APP_NAME } from "../../../config.ts";
 import { findInitialModel } from "../../../core/model-resolver.ts";
 import { ModelRuntime } from "../../../core/model-runtime.ts";
 import { Lane, Models, Worker } from "../shared/protocol.ts";
@@ -58,7 +59,7 @@ export async function runSessionWorker(options: {
 	const { cwd } = options;
 	const modelRuntime = await ModelRuntime.create();
 	const { model, thinkingLevel } = await findInitialModel({ scopedModels: [], isContinuing: false, modelRuntime });
-	if (!model) throw new Error("No model available. Configure credentials with `pi` first.");
+	if (!model) throw new Error(`No model available. Configure credentials with \`${APP_NAME}\` first.`);
 
 	const executionEnv = new NodeExecutionEnv({ cwd });
 	const repo = new JsonlSessionRepo({ fileSystem: executionEnv, sessionsRoot: options.sessionsRoot });

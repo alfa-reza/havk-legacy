@@ -26,7 +26,7 @@ import {
 	TuiAltScreen,
 	VStack,
 } from "@earendil-works/pi-tui";
-import { getAgentDir } from "../../../config.ts";
+import { APP_NAME, getAgentDir } from "../../../config.ts";
 import { KeybindingsManager } from "../../../core/keybindings.ts";
 import { createAllToolRenderers } from "../../../core/tools/renderers/index.ts";
 import { AssistantMessageComponent } from "../../../modes/interactive/components/assistant-message.ts";
@@ -399,7 +399,7 @@ function runLogin(
 	const dialog = new LoginDialogComponent(view.ui, account.id, () => view.restoreEditor(), account.name);
 	view.mount(dialog, dialog);
 	if (!account.interactive) {
-		dialog.showInfo(`${account.methodName ?? "Authentication"} is configured outside pi.`, [], true);
+		dialog.showInfo(`${account.methodName ?? "Authentication"} is configured outside ${APP_NAME}.`, [], true);
 		return Promise.resolve({ ok: true });
 	}
 	setUi({

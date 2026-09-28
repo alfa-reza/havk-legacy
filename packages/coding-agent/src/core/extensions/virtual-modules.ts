@@ -6,12 +6,12 @@ import * as bundledPiTui from "@earendil-works/pi-tui";
 import * as bundledTypebox from "typebox";
 import * as bundledTypeboxCompile from "typebox/compile";
 import * as bundledTypeboxValue from "typebox/value";
-// This import is safe because loader.ts exports are not re-exported from index.ts.
-// Extensions can therefore import from @earendil-works/pi-coding-agent.
+import { PACKAGE_NAME } from "../../config.ts";
 import * as bundledPiCodingAgent from "../../index.ts";
 
 /** Modules available to extensions in source and compiled binary runtimes. */
 export const VIRTUAL_MODULES: Record<string, unknown> = {
+	[PACKAGE_NAME]: bundledPiCodingAgent,
 	typebox: bundledTypebox,
 	"typebox/compile": bundledTypeboxCompile,
 	"typebox/value": bundledTypeboxValue,

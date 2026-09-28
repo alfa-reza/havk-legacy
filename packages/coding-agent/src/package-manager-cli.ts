@@ -22,6 +22,7 @@ import {
 	getPackageDir,
 	getSelfUpdateCommand,
 	getSelfUpdateUnavailableInstruction,
+	isOfficialDistribution,
 	PACKAGE_NAME,
 	type SelfUpdateCommand,
 	type SelfUpdatePackageTarget,
@@ -337,24 +338,24 @@ Examples:
 			console.log(`${chalk.bold("Usage:")}
   ${getPackageCommandUsage("update")}
 
-Update pi, installed packages, or model catalogs.
+Manage installed packages, model catalogs, and self-update when supported.
 
 Options:
-  --self                  Update pi only (default when no target is given)
+  --self                  Self-update the current distribution when supported
   --extensions            Update installed packages only
   --models                Refresh model catalogs only
-  --all                   Update pi and installed packages
+  --all                   Update installed packages and self-update when supported
   --extension <source>    Update one package only
   -a, --approve           Trust project-local files for this command
   -na, --no-approve       Ignore project-local files for this command
-  --force                 Reinstall pi even if the current version is latest
+  --force                 Force self-update when supported
 
 Short forms:
-  ${APP_NAME} update                Update pi only
-  ${APP_NAME} update --all          Update pi and all extensions
+  ${APP_NAME} update                Self-update the current distribution when supported
+  ${APP_NAME} update --all          Update extensions and self-update when supported
   ${APP_NAME} update --models       Refresh model catalogs only
   ${APP_NAME} update <source>       Update one package
-  ${APP_NAME} update pi             Update pi only (self works as alias to pi)
+  ${APP_NAME} update pi             Legacy alias for self-update
 `);
 			return;
 
@@ -660,6 +661,11 @@ interface SelfUpdatePlan {
 }
 
 async function getSelfUpdatePlan(force: boolean): Promise<SelfUpdatePlan> {
+	if (!isOfficialDistribution()) {
+		throw new Error(
+			`Self-update is not configured for this distribution yet. Update ${PACKAGE_NAME} manually with your package manager.`,
+		);
+	}
 	let latestRelease: Awaited<ReturnType<typeof getLatestPiRelease>>;
 	try {
 		latestRelease = await getLatestPiRelease(VERSION, { retry: true });
@@ -1020,6 +1026,17 @@ export async function handlePackageCommand(
 					}
 				}
 				if (updateTargetIncludesSelf(target)) {
+					if (!isOfficialDistribution()) {
+						console.error(
+							chalk.yellow(
+								`Self-update is not configured for this distribution yet.\nUpdate ${PACKAGE_NAME} manually with your package manager.`,
+							),
+						);
+						if (target.type === "self") {
+							process.exitCode = 1;
+						}
+						return true;
+					}
 					const managedInstallRoot = getActiveManagedInstallRoot();
 					if (managedInstallRoot && options.force) {
 						console.error(

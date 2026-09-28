@@ -3,11 +3,13 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getPublicWorkspacePackages } from "./release-packages.mjs";
 
-const codingAgentName = "@earendil-works/pi-coding-agent";
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const codingAgentPackage = JSON.parse(readFileSync(join(repoRoot, "packages/coding-agent/package.json"), "utf8"));
+const codingAgentName = codingAgentPackage.name;
 const developmentPackages = new Set(["pi-client", "pi-protocol", "pi-server"].map((name) => `@earendil-works/${name}`));
 
 function run(command, args, options = {}) {
@@ -113,7 +115,12 @@ for (const subpath of ["/client", "/experimental/plugin"]) {
 }
 `);
 		run(runtime, [entry], { cwd: directory, env, timeout: 30_000 });
-		for (const cli of new Set([manifest.bin.pi, "dist/cli.js"])) {
+		const appName = manifest.piConfig?.name ?? "pi";
+		const bundledCli = manifest.bin[appName];
+		if (!bundledCli) {
+			throw new Error(`Missing CLI binary for configured app name: ${appName}`);
+		}
+		for (const cli of new Set([bundledCli, "dist/cli.js"])) {
 			const output = run(runtime, [join(packageDir, cli), "--version"], { cwd: directory, env, timeout: 30_000 });
 			if (output.trim() !== manifest.version) throw new Error(`Unexpected version from ${cli}: ${output}`);
 		}
@@ -126,7 +133,7 @@ for (const subpath of ["/client", "/experimental/plugin"]) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
 	if (process.argv.length !== 2) throw new Error("Usage: node scripts/coding-agent-consumer.mjs");
-	const root = mkdtempSync(join(tmpdir(), "pi-package-consumer-"));
+	const root = mkdtempSync(join(tmpdir(), "havk-package-consumer-"));
 	try {
 		const tarballs = packReleasePackages(getPublicWorkspacePackages(), join(root, "tarballs"));
 		const directory = join(root, "consumer");

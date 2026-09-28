@@ -504,6 +504,27 @@ export const APP_TITLE: string = piConfigName ? APP_NAME : "π";
 export const CONFIG_DIR_NAME: string = pkg.piConfig?.configDir || ".pi";
 export const VERSION: string = pkg.version || "0.0.0";
 
+export const OFFICIAL_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
+export const OFFICIAL_APP_NAME = "pi";
+export const OFFICIAL_CONFIG_DIR_NAME = ".pi";
+
+export interface DistributionMetadata {
+	packageName?: string;
+	appName?: string;
+	configDirName?: string;
+}
+
+export function isOfficialDistribution(metadata?: DistributionMetadata): boolean {
+	const packageName = metadata?.packageName ?? PACKAGE_NAME;
+	const appName = metadata?.appName ?? APP_NAME;
+	const configDirName = metadata?.configDirName ?? CONFIG_DIR_NAME;
+	return (
+		packageName === OFFICIAL_PACKAGE_NAME &&
+		appName === OFFICIAL_APP_NAME &&
+		configDirName === OFFICIAL_CONFIG_DIR_NAME
+	);
+}
+
 // e.g., PI_CODING_AGENT_DIR or TAU_CODING_AGENT_DIR
 export const ENV_AGENT_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_DIR`;
 export const ENV_SESSION_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_SESSION_DIR`;
@@ -526,7 +547,7 @@ export function getShareViewerUrl(gistId: string): string {
 
 /** Get the agent config directory (e.g., ~/.pi/agent/) */
 export function getAgentDir(): string {
-	const envDir = process.env[ENV_AGENT_DIR];
+	const envDir = process.env[ENV_AGENT_DIR] || process.env.PI_CODING_AGENT_DIR;
 	if (envDir) {
 		return expandTildePath(envDir);
 	}
