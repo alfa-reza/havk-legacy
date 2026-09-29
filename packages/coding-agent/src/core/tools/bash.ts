@@ -110,8 +110,9 @@ export function createLocalShellOperations(shellName: string, resolveShellConfig
 			if (child.pid) trackDetachedChildPid(child.pid);
 			let timedOut = false;
 			let timeoutHandle: NodeJS.Timeout | undefined;
+			const isSudo = detectSudo(command).hasSudo;
 			const onAbort = () => {
-				if (child.pid) killProcessTree(child.pid);
+				if (child.pid) killProcessTree(child.pid, { isSudo });
 			};
 
 			try {
@@ -119,7 +120,7 @@ export function createLocalShellOperations(shellName: string, resolveShellConfig
 				if (timeoutMs !== undefined) {
 					timeoutHandle = setTimeout(() => {
 						timedOut = true;
-						if (child.pid) killProcessTree(child.pid);
+						if (child.pid) killProcessTree(child.pid, { isSudo });
 					}, timeoutMs);
 				}
 				// Stream stdout and stderr.
