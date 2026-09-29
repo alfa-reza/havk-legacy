@@ -20,17 +20,21 @@ Run `/login` and select a provider. Pi stores credentials in [`auth.json`](confi
 
 You can instead provide an API key through the provider's environment variable. This is useful in CI and other environments where Pi should not write credentials. [Provider Authentication](providers.md) lists the variables and cloud-provider setup.
 
-When several credential sources are configured, Pi uses a runtime `--api-key` first, then a stored `auth.json` credential, an `apiKey` from `models.json`, and finally the provider's environment variables or ambient cloud credentials. Provider extensions can define their own authentication behavior.
+When several credential sources are configured, Pi uses a runtime `--api-key` first, then a stored `auth.json` credential, an
+`apiKey` from `models.json`, and finally the provider's environment variables or ambient cloud credentials. Provider extensions can define their own authentication behavior.
 
-Keep `auth.json` and any credential commands private. Project settings and extensions can execute inside the Pi process after you trust a project. Review [Security](security.md) before loading configuration from an untrusted directory.
+Keep `auth.json` and any credential commands private. Project settings and extensions can execute inside the Pi process after
+you trust a project. Review [Security](security.md) before loading configuration from an untrusted directory.
 
 ## Select a model
 
 Run `/model` to search available models. The picker shows models whose providers have usable authentication. Press `Ctrl+S` on a model to save it as the default for new sessions.
 
-Run `/thinking` to select the thinking level for the current model. Press `Ctrl+S` there to save the startup level. Pi limits the choices to levels supported by the selected model.
+Run `/thinking` to select the thinking level for the current model. Press `Ctrl+S` there to save the startup level. Pi limits
+the choices to levels supported by the selected model.
 
-`Ctrl+P` cycles through available models. Use `/scoped-models` to control that cycle and save the selection, or configure model patterns through [Settings](settings.md#model-cycling).
+`Ctrl+P` cycles through available models. Use `/scoped-models`
+to control that cycle and save the selection, or configure model patterns through [Settings](settings.md#model-cycling).
 
 A session records model and thinking-level changes. Resuming the session restores them without changing defaults for new sessions.
 
@@ -61,7 +65,8 @@ Use [`models.json`](configuration.md#agent-directory) when an endpoint speaks an
 }
 ```
 
-The dummy key makes the model available to Pi; Ollama ignores it. For an authenticated endpoint, `apiKey` and header values can use `$NAME` or `${NAME}` environment interpolation, a literal value, or a leading `!command`. Commands in `models.json` run at request time and are not cached by Pi.
+The dummy key makes the model available to Pi; Ollama ignores it. For an authenticated endpoint, `apiKey` and header values can use `$NAME` or `${NAME}` environment interpolation, a literal value, or a leading `!command`. Commands in `models.json` run
+at request time and are not cached by Pi.
 
 Opening `/model` reloads the file. A `models` entry adds or replaces a model with the same ID on that provider. Use `modelOverrides` to change metadata for an existing built-in or extension-provided model without replacing the provider's model list. Unknown override IDs are ignored.
 
@@ -86,7 +91,9 @@ Use `inputLimits.images.resize` to control how Pi encodes new image attachments,
 }
 ```
 
-`maxBytes` limits the base64-encoded payload. Omitted resize fields use conservative defaults of 2000 by 2000 pixels, 4.5 MiB encoded, and JPEG quality 80. Images are encoded once; changing models does not rewrite historical images. The catalog can also describe hard request limits with `inputLimits.maxRequestBytes`, `images.maxPerMessage`, and `images.maxPerRequest`, but Pi does not yet rewrite or reject history based on them.
+`maxBytes` limits the base64-encoded payload. Omitted resize fields use conservative defaults of 2000 by 2000 pixels, 4.5 MiB
+encoded, and JPEG quality 80. Images are encoded once; changing models does not rewrite historical images. The catalog can also describe hard request limits with `inputLimits.maxRequestBytes`, `images.maxPerMessage`, and `images.maxPerRequest`, but Pi
+does not yet rewrite or reject history based on them.
 
 <a id="prompt-cache-lifetimes"></a>
 
@@ -98,7 +105,76 @@ Use `promptCache` to declare the provider's best-effort cache lifetime in second
 
 Choose the conservative end of any published range. A model without a lifetime for the active tier is not eligible for cache warming. A `modelOverrides` entry can set `inputLimits` or `promptCache` for a built-in or extension model, including a model accessed through a validated proxy. See [`cacheWarming`](settings.md#model-and-thinking).
 
-Compatibility settings should describe verified differences in the endpoint's request or response behavior. Do not enable them based only on an endpoint advertising OpenAI or Anthropic compatibility.
+Compatibility settings should describe verified differences in
+the endpoint's request or response behavior. Do not enable them based only on an endpoint advertising OpenAI or Anthropic compatibility.
+
+## Use classifier models
+
+Classifier models do not chat. They answer typed questions about JSON state: pick one of several choices, answer yes or no, or give a score, each with probabilities. Pi includes TypeSafe's
+Jev model from these providers:
+
+| Provider | Model IDs | Authentication |
+|---|---|---|
+| `typesafe` | `jev-latest` | `TYPESAFE_API_KEY` |
+| `openrouter` | `typesafe/jev-1.13`, `~typesafe/jev-latest` | `OPENROUTER_API_KEY` or `/login` |
+| `cloudflare-workers-ai` | `typesafe/jev` | `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID` |
+| `vercel-ai-gateway` | `typesafe-ai/jev` | `AI_GATEWAY_API_KEY` |
+| `opencode` | `jev-1.13`, `jev-1.13-free` | `OPENCODE_API_KEY` |
+
+Chat models on a [llama.cpp router](llama-cpp.md#classification) are also listed as classifier models.
+
+Classifier models do not appear in `/model`. The model reaches
+them through the [`codemode`](cli.md#enable-codemode) tool, which is off unless an MCP server turned it on. Enable it with `"defaultTools": ["+codemode"]` in [settings](settings.md#tools).
+
+Scripts then list classifier models with `models.getAvailableOfType("classifier")` and call `models.classify(model, { state, questions })`:
+
+```js
+const jev = await models.getModelOfType("classifier", "typesafe", "jev-latest");
+const result = await models.classify(jev, {
+  state: { message: "The change works, thanks." },
+  questions: {
+    approved: {
+      type: "bool",
+      instructions: "Does the user approve of the result?",
+      criteria: { true: "Approval", false: "No approval" },
+    },
+  },
+});
+return result.answers;
+```
+
+Extensions call classifiers through `ctx.modelRegistry.classify()`, without codemode. [Virtual models](virtual-models.md#route-requests) can use them to route requests; see the `jev-router.ts` example.
+
+## Use classifier models
+
+Classifier models do not chat. They answer typed questions about JSON state: pick one of several choices, answer yes or no, or give a score, each with probabilities. Pi includes TypeSafe's Jev model from three providers:
+
+| Provider | Model IDs | Authentication |
+|---|---|---|
+| `typesafe` | `jev-latest` | `TYPESAFE_API_KEY` |
+| `openrouter` | `typesafe/jev-1.13`, `~typesafe/jev-latest` | `OPENROUTER_API_KEY` or `/login` |
+| `cloudflare-workers-ai` | `typesafe/jev` | `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID` |
+
+Chat models on a [llama.cpp router](llama-cpp.md#classification) are also listed as classifier models.
+
+Classifier models do not appear in `/model`. The model reaches them through the [`codemode`](cli.md#enable-codemode) tool, which is off unless an MCP server turned it on. Enable it with `"defaultTools": ["+codemode"]` in [settings](settings.md#tools). Scripts then list classifier models with `models.getAvailableOfType("classifier")` and call `models.classify(model, { state, questions })`:
+
+```js
+const jev = await models.getModelOfType("classifier", "typesafe", "jev-latest");
+const result = await models.classify(jev, {
+  state: { message: "The change works, thanks." },
+  questions: {
+    approved: {
+      type: "bool",
+      instructions: "Does the user approve of the result?",
+      criteria: { true: "Approval", false: "No approval" },
+    },
+  },
+});
+return result.answers;
+```
+
+Extensions call classifiers through `ctx.modelRegistry.classify()`, without codemode. [Virtual models](virtual-models.md#route-requests) can use them to route requests; see the `jev-router.ts` example.
 
 ## Add a custom provider
 
@@ -112,7 +188,9 @@ Confirm that its provider has usable authentication. Custom models can load from
 
 ### Authentication works in one shell only
 
-Check whether the key came from an environment variable rather than `auth.json`. Environment variables must be present in the process that starts Pi.
+Check whether the key came from an environment variable rather
+than `auth.json`. Environment variables must be present in the
+process that starts Pi.
 
 ### Sign-in opens a browser on a remote machine
 

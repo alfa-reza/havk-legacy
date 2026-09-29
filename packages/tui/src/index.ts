@@ -184,3 +184,4 @@ export {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "./utils.ts";
+export type { WheelScrollLines } from "./wheel-scroll.ts";
