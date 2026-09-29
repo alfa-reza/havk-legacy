@@ -92,12 +92,13 @@ These practices do not replace isolation, but they reduce exposure or make recov
 
 ## Local sudo mediation and privileged execution
 
-Havk provides mediated local sudo execution:
+Havk provides mediated local sudo execution for Local Linux Bash:
 
-- **Approval modes**: Explicit agent sudo commands require user approval (`ASK` by default) with options to deny, allow once, or allow for the remainder of the session (`ALLOW_SUDO_SESSION`). Session approval is in-memory only and resets on new/switch session, branch navigation, or reload.
-- **Isolated password input**: Sudo password entry uses an isolated terminal mode where keystrokes bypass ordinary input listeners, editors, history, and model transcripts. Input is masked with asterisks.
-- **Process memory posture (`LIMITED`)**: Credential buffers are zeroed at application level on completion or error as best-effort defense. However, operating-system-level process-memory isolation between same-UID processes is host-policy-dependent (governed by kernel ptrace/Yama policies such as `/proc/sys/kernel/yama/ptrace_scope`). Password retention across unattended commands is prohibited.
-- **Lifecycle cleanup**: Privileged processes are terminated using coordinated signal delivery (`SIGTERM` followed by `SIGKILL` and privileged sweeps) to avoid leaving orphaned root background processes upon cancellation or timeout.
+- **Approval modes**: Explicit agent sudo commands require user approval (`ASK` by default) with options to deny, allow once, or allow for the remainder of the session (`ALLOW_SUDO_SESSION`). Session approval is in-memory only and resets unconditionally on new session, switch session, resume, branch navigation, or reload. `ALLOW_SUDO_SESSION` is committed only upon zero-exit command success.
+- **Scope**: Sudo mediation is strictly scoped to local Linux Bash execution. Non-Linux platforms, PowerShell, and custom/remote backends preserve their pre-feature semantics without interception.
+- **Authentication**: Sudo mediation supports NOPASSWD execution and native valid credentials. Password-capable sudo over askpass is deferred in userland mode because same-UID child processes cannot be prevented from executing the helper or extracting tokens without OS-level privilege separation. Commands requiring interactive password entry fail closed safely without exposing credentials.
+- **Display sanitization**: Commands presented in approval dialogs are sanitized against terminal control escapes (including 7-bit CSI and 8-bit C1 CSI U+009B), C0/C1 control codes, carriage return/backspace spoofing, and Unicode bidirectional formatting characters.
+- **Lifecycle cleanup**: Privileged processes are signaled using coordinated process-group termination (`SIGTERM` followed by `SIGKILL` and privileged group sweeps).
 
 For complete Linux capability matrix and empirical gate results, see [Phase 0 Capability Matrix and Evidence](phase-0-evidence.md).
 

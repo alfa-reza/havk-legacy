@@ -196,6 +196,30 @@ describe("AskpassService (S1A & S6 Security Invariants)", () => {
 		}
 	});
 
+	it("bounded disposal: terminates idle clients and disposes without hanging", async () => {
+		const session = await AskpassService.createSession({
+			promptPassword: async () => Buffer.from("pass", "utf-8"),
+		});
+
+		const sockPath = session.helperPath.replace(/askpass\.sh$/, "askpass.sock");
+
+		try {
+			// Connect an idle client that sends no data
+			const idleClient = net.connect(sockPath);
+			await new Promise<void>((resolve) => {
+				idleClient.on("connect", () => resolve());
+			});
+
+			// session.dispose() must terminate the idle client and resolve within bounded time
+			const disposePromise = session.dispose();
+			const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("dispose hung")), 2000));
+
+			await expect(Promise.race([disposePromise, timeoutPromise])).resolves.toBeUndefined();
+		} finally {
+			await session.dispose();
+		}
+	});
+
 	it("provides a working PATH shim for sudo -A", async () => {
 		const session = await AskpassService.createSession({
 			trustedSudoPath: "/bin/echo",

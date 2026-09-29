@@ -127,28 +127,70 @@ function tokenize(input: string): ShellToken[] {
 }
 
 /**
- * Clean quoting from a token for analysis, preserving unquoted structure.
+ * Remove POSIX shell quoting (backslashes, single quotes, double quotes).
  */
-function unquote(str: string): string {
-	if ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
-		return str.slice(1, -1);
+export function removeQuotes(str: string): string {
+	let res = "";
+	let inSingle = false;
+	let inDouble = false;
+	for (let i = 0; i < str.length; i++) {
+		const ch = str[i]!;
+		if (inSingle) {
+			if (ch === "'") {
+				inSingle = false;
+			} else {
+				res += ch;
+			}
+		} else if (inDouble) {
+			if (ch === '"') {
+				inDouble = false;
+			} else if (ch === "\\") {
+				if (i + 1 < str.length) {
+					const next = str[i + 1]!;
+					if (next === '"' || next === "\\" || next === "$" || next === "`" || next === "\n") {
+						res += next;
+						i++;
+					} else {
+						res += `\\${next}`;
+						i++;
+					}
+				} else {
+					res += "\\";
+				}
+			} else {
+				res += ch;
+			}
+		} else {
+			if (ch === "'") {
+				inSingle = true;
+			} else if (ch === '"') {
+				inDouble = true;
+			} else if (ch === "\\") {
+				if (i + 1 < str.length) {
+					res += str[i + 1]!;
+					i++;
+				}
+			} else {
+				res += ch;
+			}
+		}
 	}
-	return str;
+	return res;
 }
 
 /**
- * Check if token represents sudo or path to sudo.
+ * Check if token represents sudo or path to sudo after quote removal.
  */
 function isSudoBinary(tok: string): boolean {
-	const clean = unquote(tok);
+	const clean = removeQuotes(tok);
 	return clean === "sudo" || clean.endsWith("/sudo");
 }
 
 /**
- * Check if token represents sudoedit or path to sudoedit.
+ * Check if token represents sudoedit or path to sudoedit after quote removal.
  */
 function isSudoeditBinary(tok: string): boolean {
-	const clean = unquote(tok);
+	const clean = removeQuotes(tok);
 	return clean === "sudoedit" || clean.endsWith("/sudoedit");
 }
 
@@ -241,7 +283,7 @@ export function detectSudo(commandText: string): SudoDetectionResult {
 
 		// Skip and inspect environment variable assignments preceding executable
 		while (tokenIndex < cmdTokens.length) {
-			const tok = unquote(cmdTokens[tokenIndex]!.text);
+			const tok = removeQuotes(cmdTokens[tokenIndex]!.text);
 			if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tok)) {
 				if (tok.startsWith("SUDO_ASKPASS=")) {
 					hasAskpassEnv = true;
@@ -254,30 +296,131 @@ export function detectSudo(commandText: string): SudoDetectionResult {
 
 		if (tokenIndex >= cmdTokens.length) continue;
 
-		// Handle command prefixes: env, command, exec, nohup
+		// Handle command prefixes: env, command, exec, nohup, nice, time, builtin
 		while (tokenIndex < cmdTokens.length) {
-			const tok = unquote(cmdTokens[tokenIndex]!.text);
-			if (tok === "command" || tok === "exec" || tok === "nohup") {
+			const clean = removeQuotes(cmdTokens[tokenIndex]!.text);
+
+			if (clean === "builtin") {
 				tokenIndex++;
-			} else if (tok === "env") {
+				continue;
+			}
+
+			if (clean === "command") {
 				tokenIndex++;
-				// Skip env options like -i or VAR=VAL
 				while (tokenIndex < cmdTokens.length) {
-					const envTok = unquote(cmdTokens[tokenIndex]!.text);
-					if (envTok.startsWith("-")) {
+					const opt = removeQuotes(cmdTokens[tokenIndex]!.text);
+					if (opt === "--") {
 						tokenIndex++;
-					} else if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(envTok)) {
-						if (envTok.startsWith("SUDO_ASKPASS=")) {
-							hasAskpassEnv = true;
-						}
+						break;
+					}
+					if (opt.startsWith("-")) {
 						tokenIndex++;
 					} else {
 						break;
 					}
 				}
-			} else {
-				break;
+				continue;
 			}
+
+			if (clean === "exec") {
+				tokenIndex++;
+				while (tokenIndex < cmdTokens.length) {
+					const opt = removeQuotes(cmdTokens[tokenIndex]!.text);
+					if (opt === "--") {
+						tokenIndex++;
+						break;
+					}
+					if (opt === "-a") {
+						tokenIndex += 2;
+					} else if (opt.startsWith("-a")) {
+						tokenIndex++;
+					} else if (opt.startsWith("-")) {
+						tokenIndex++;
+					} else {
+						break;
+					}
+				}
+				continue;
+			}
+
+			if (clean === "nohup") {
+				tokenIndex++;
+				if (tokenIndex < cmdTokens.length && removeQuotes(cmdTokens[tokenIndex]!.text) === "--") {
+					tokenIndex++;
+				}
+				continue;
+			}
+
+			if (clean === "nice") {
+				tokenIndex++;
+				while (tokenIndex < cmdTokens.length) {
+					const opt = removeQuotes(cmdTokens[tokenIndex]!.text);
+					if (opt === "--") {
+						tokenIndex++;
+						break;
+					}
+					if (opt === "-n" || opt === "--adjustment") {
+						tokenIndex += 2;
+					} else if (/^-[0-9]+$/.test(opt) || opt.startsWith("-n") || opt.startsWith("--adjustment=")) {
+						tokenIndex++;
+					} else if (opt.startsWith("-")) {
+						tokenIndex++;
+					} else {
+						break;
+					}
+				}
+				continue;
+			}
+
+			if (clean === "time") {
+				tokenIndex++;
+				while (tokenIndex < cmdTokens.length) {
+					const opt = removeQuotes(cmdTokens[tokenIndex]!.text);
+					if (opt === "--") {
+						tokenIndex++;
+						break;
+					}
+					if (opt === "-p" || opt === "--portability" || opt.startsWith("-")) {
+						tokenIndex++;
+					} else {
+						break;
+					}
+				}
+				continue;
+			}
+
+			if (clean === "env") {
+				tokenIndex++;
+				while (tokenIndex < cmdTokens.length) {
+					const opt = removeQuotes(cmdTokens[tokenIndex]!.text);
+					if (opt === "--") {
+						tokenIndex++;
+						break;
+					}
+					if (opt === "-u" || opt === "--unset" || opt === "-C" || opt === "--chdir") {
+						tokenIndex += 2;
+					} else if (
+						opt.startsWith("-u") ||
+						opt.startsWith("--unset=") ||
+						opt.startsWith("-C") ||
+						opt.startsWith("--chdir=")
+					) {
+						tokenIndex++;
+					} else if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(opt)) {
+						if (opt.startsWith("SUDO_ASKPASS=")) {
+							hasAskpassEnv = true;
+						}
+						tokenIndex++;
+					} else if (opt.startsWith("-")) {
+						tokenIndex++;
+					} else {
+						break;
+					}
+				}
+				continue;
+			}
+
+			break;
 		}
 
 		if (tokenIndex >= cmdTokens.length) continue;
@@ -306,7 +449,7 @@ export function detectSudo(commandText: string): SudoDetectionResult {
 
 		while (tokenIndex < cmdTokens.length) {
 			const rawTok = cmdTokens[tokenIndex]!.text;
-			const tok = unquote(rawTok);
+			const tok = removeQuotes(rawTok);
 
 			if (sawTargetCommand || sawEndOfOptions) {
 				targetCommand.push(rawTok);

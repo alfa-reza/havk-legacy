@@ -7,9 +7,9 @@
  * execution source.
  */
 
-// Match ANSI CSI, OSC, APC, DCS, PM sequences
+// Match ANSI CSI (both 7-bit ESC [ and 8-bit C1 U+009B), OSC, APC, DCS, PM sequences
 const ANSI_PATTERN =
-	/\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b_[^\x07\x1b]*(?:\x07|\x1b\\)|\x1bP[^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\^[^\x07\x1b]*(?:\x07|\x1b\\)/g;
+	/(?:\x1b\[|\u009b)[0-9;?]*[a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b_[^\x07\x1b]*(?:\x07|\x1b\\)|\x1bP[^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\^[^\x07\x1b]*(?:\x07|\x1b\\)/gi;
 
 // Unicode Bidi_Control characters (TR9)
 const BIDI_CONTROL_PATTERN = /[\u202A-\u202E\u2066-\u2069\u200E\u200F\u061C]/g;
@@ -28,7 +28,7 @@ function formatCodePoint(codePoint: number): string {
  * Sanitize shell command source for safe terminal display in the approval UI.
  */
 export function sanitizeApprovalDisplay(commandText: string): string {
-	// 1. Strip ANSI escape sequences
+	// 1. Strip ANSI escape sequences (including C1 CSI)
 	let text = commandText.replace(ANSI_PATTERN, "");
 
 	// 2. Visibly escape Unicode Bidi_Control characters
@@ -40,7 +40,7 @@ export function sanitizeApprovalDisplay(commandText: string): string {
 	// 3. Strip invisible format characters
 	text = text.replace(INVISIBLE_PATTERN, "");
 
-	// 4. Handle C0 control characters, carriage return, and backspace
+	// 4. Handle C0 control characters, DEL, C1 control characters (0x80-0x9F), carriage return, and backspace
 	let result = "";
 	for (let i = 0; i < text.length; i++) {
 		const ch = text[i]!;
@@ -52,7 +52,7 @@ export function sanitizeApprovalDisplay(commandText: string): string {
 			result += "\\b";
 		} else if (ch === "\t" || ch === "\n") {
 			result += ch;
-		} else if (code < 0x20 || code === 0x7f) {
+		} else if (code < 0x20 || code === 0x7f || (code >= 0x80 && code <= 0x9f)) {
 			result += `\\x${code.toString(16).padStart(2, "0")}`;
 		} else {
 			result += ch;

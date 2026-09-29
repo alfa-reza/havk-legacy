@@ -94,10 +94,12 @@ export interface PasswordPromptOptions {
 }
 
 /**
- * Interactive password prompt component implementing PRD §8.3.
+ * Interactive password prompt component.
  *
  * Displays masked feedback ('*') and captures input using TUI's isolated secure input path.
- * Plaintext password characters are never rendered or stored in strings.
+ * While terminal input APIs in Node.js inevitably deliver immutable JavaScript strings at the
+ * event boundary, Havk avoids creating unnecessary long-lived string copies and stores
+ * mutable password bytes in a SecurePasswordBuffer that is zeroized with .fill(0) upon completion.
  */
 export class PasswordPromptComponent implements Component, Focusable {
 	private readonly tui: TUI;

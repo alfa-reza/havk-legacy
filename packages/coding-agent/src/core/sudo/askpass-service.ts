@@ -31,9 +31,9 @@ export interface AskpassSession {
 let cachedTrustedSudo: string | null | undefined;
 
 /**
- * Resolves and verifies the local trusted sudo binary.
- * Checks common standard paths first, then falls back to PATH resolution.
- * Verifies the binary exists, is executable, and is not agent-controlled.
+ * Resolves local sudo binary candidates.
+ * Checks common standard paths first (/usr/bin/sudo, /bin/sudo, /usr/local/bin/sudo).
+ * Verifies the binary exists, is a regular file, and has executable bits set.
  */
 export function resolveTrustedSudoPath(): string | null {
 	if (cachedTrustedSudo !== undefined) {
@@ -69,7 +69,14 @@ export function setTrustedSudoPathForTesting(trustedPath: string | null | undefi
 
 /**
  * Creates an ephemeral one-shot AskpassSession with isolated Unix socket IPC
- * and strict anti-oracle token validation.
+ * and strict token validation.
+ *
+ * NOTE ON SAME-UID ORACLE DEFERRAL:
+ * In Havk Local mode, child processes executing under the same Unix UID can
+ * read filesystem artifacts and tokens belonging to the user. To prevent
+ * the askpass helper from functioning as a password oracle for unprivileged
+ * agent-controlled commands, password-capable sudo is deferred in the local
+ * execution engine. Sudo mediation is active for NOPASSWD and native credentials.
  */
 export async function createAskpassSession(options: AskpassSessionOptions = {}): Promise<AskpassSession> {
 	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "havk-askpass-"));
@@ -78,11 +85,11 @@ export async function createAskpassSession(options: AskpassSessionOptions = {}):
 	const sockPath = path.join(tempDir, "askpass.sock");
 	const token = crypto.randomBytes(32).toString("hex");
 	const tokenBuf = Buffer.from(token, "utf-8");
-	const maxAttempts = options.maxAttempts ?? 3;
+	const maxAttempts = options.maxAttempts ?? 1;
 	let attempts = 0;
 	let canceled = false;
-	let activePasswordBuf: Buffer | null = null;
 	let disposed = false;
+	const activeSockets = new Set<net.Socket>();
 
 	const prompter =
 		options.promptPassword ??
@@ -95,6 +102,24 @@ export async function createAskpassSession(options: AskpassSessionOptions = {}):
 
 	// 1. Create Unix domain socket server
 	const server = net.createServer((conn) => {
+		activeSockets.add(conn);
+		let connPasswordBuf: Buffer | null = null;
+		const cleanupConnBuf = () => {
+			if (connPasswordBuf) {
+				connPasswordBuf.fill(0);
+				connPasswordBuf = null;
+			}
+		};
+
+		conn.on("close", () => {
+			cleanupConnBuf();
+			activeSockets.delete(conn);
+		});
+		conn.on("error", () => {
+			cleanupConnBuf();
+			conn.destroy();
+		});
+
 		let readBuf = "";
 		conn.on("data", async (chunk) => {
 			readBuf += chunk.toString("utf-8");
@@ -126,24 +151,17 @@ export async function createAskpassSession(options: AskpassSessionOptions = {}):
 						return;
 					}
 
-					activePasswordBuf = password;
+					connPasswordBuf = password;
 					conn.write(password);
 					conn.write("\n", () => {
 						conn.end();
-						// Zero memory immediately after transmission
-						if (activePasswordBuf) {
-							activePasswordBuf.fill(0);
-							activePasswordBuf = null;
-						}
+						cleanupConnBuf();
 					});
 				} catch {
+					cleanupConnBuf();
 					conn.destroy();
 				}
 			}
-		});
-
-		conn.on("error", () => {
-			conn.destroy();
 		});
 	});
 
@@ -165,6 +183,10 @@ const sock = ${sockStr};
 const token = ${tokStr};
 const client = net.connect(sock, () => {
   client.write(token + "\\n");
+});
+client.setTimeout(3000, () => {
+  client.destroy();
+  process.exit(1);
 });
 let received = false;
 client.on("data", (data) => {
@@ -199,15 +221,23 @@ exec "${trustedSudo}" -A "$@"
 		if (disposed) return;
 		disposed = true;
 
-		// Zero any active secret buffer
-		if (activePasswordBuf) {
-			activePasswordBuf.fill(0);
-			activePasswordBuf = null;
+		// Terminate all active client connections so server.close does not hang
+		for (const sock of activeSockets) {
+			try {
+				sock.destroy();
+			} catch {
+				// Best-effort destroy
+			}
 		}
+		activeSockets.clear();
 
-		// Close server and wait for shutdown
+		// Close server with bounded shutdown timeout
 		await new Promise<void>((resolve) => {
-			server.close(() => resolve());
+			const timer = setTimeout(() => resolve(), 500);
+			server.close(() => {
+				clearTimeout(timer);
+				resolve();
+			});
 		});
 
 		// Remove ephemeral directory

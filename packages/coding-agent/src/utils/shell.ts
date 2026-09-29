@@ -164,10 +164,14 @@ export function sanitizeBinaryOutput(str: string): string {
  * Detached child processes must be tracked so they can be killed on parent
  * shutdown signals (SIGHUP/SIGTERM).
  */
-const trackedDetachedChildPids = new Set<number>();
+export interface KillProcessTreeOptions {
+	isSudo?: boolean;
+}
 
-export function trackDetachedChildPid(pid: number): void {
-	trackedDetachedChildPids.add(pid);
+const trackedDetachedChildPids = new Map<number, KillProcessTreeOptions | undefined>();
+
+export function trackDetachedChildPid(pid: number, options?: KillProcessTreeOptions): void {
+	trackedDetachedChildPids.set(pid, options);
 }
 
 export function untrackDetachedChildPid(pid: number): void {
@@ -175,14 +179,10 @@ export function untrackDetachedChildPid(pid: number): void {
 }
 
 export function killTrackedDetachedChildren(): void {
-	for (const pid of trackedDetachedChildPids) {
-		killProcessTree(pid);
+	for (const [pid, options] of trackedDetachedChildPids) {
+		killProcessTree(pid, options);
 	}
 	trackedDetachedChildPids.clear();
-}
-
-export interface KillProcessTreeOptions {
-	isSudo?: boolean;
 }
 
 /**

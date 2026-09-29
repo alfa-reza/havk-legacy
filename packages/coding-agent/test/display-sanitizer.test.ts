@@ -49,4 +49,22 @@ describe("sanitizeApprovalDisplay", () => {
 		expect(sanitized).toBe("sudo apt update");
 		expect(input).toBe(copy);
 	});
+
+	it("neutralizes C1 CSI escapes and visibly escapes C1 controls including U+009B and DEL", () => {
+		// 8-bit C1 CSI escape sequence: \u009B2J
+		const csiInput = "sudo echo \u009B2Jbenign";
+		expect(sanitizeApprovalDisplay(csiInput)).toBe("sudo echo benign");
+
+		// Standalone U+009B
+		const standaloneC1 = "sudo echo \u009B";
+		expect(sanitizeApprovalDisplay(standaloneC1)).toBe("sudo echo \\x9b");
+
+		// Other C1 controls (0x80 to 0x9F)
+		const otherC1 = "sudo echo \u0080\u0085\u0090\u009F";
+		expect(sanitizeApprovalDisplay(otherC1)).toBe("sudo echo \\x80\\x85\\x90\\x9f");
+
+		// DEL (0x7F)
+		const delInput = "sudo echo \x7f";
+		expect(sanitizeApprovalDisplay(delInput)).toBe("sudo echo \\x7f");
+	});
 });

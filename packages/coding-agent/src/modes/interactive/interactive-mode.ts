@@ -581,6 +581,7 @@ export class InteractiveMode {
 		this.autoTrustOnReloadCwd = options.autoTrustOnReloadCwd;
 		this.runtimeHost.setBeforeSessionInvalidate(() => {
 			this.resetExtensionUI();
+			HavkPrivilegeManager.getInstance().reset();
 		});
 		this.runtimeHost.setRebindSession(async () => {
 			await this.rebindCurrentSession({ renderBeforeBind: true });
@@ -3246,17 +3247,22 @@ export class InteractiveMode {
 				this.editor.setText("");
 				return;
 			}
-			if (text === "/root" || text.startsWith("/root ")) {
+			if (text === "/root") {
 				this.editor.setText("");
 				this.showWarning(
-					"ROOT_SESSION is deferred because cross-process timestamp reuse is unavailable. Use ALLOW_SUDO_SESSION via the sudo approval dialog instead.",
+					"The /root command is deferred; persistent root sessions are not supported in Havk Local mode.",
 				);
 				return;
 			}
-			if (text === "/root-off" || text.startsWith("/root-off ")) {
+			if (text === "/root-off") {
 				this.editor.setText("");
-				HavkPrivilegeManager.getInstance().reset();
-				this.showStatus("Privilege authorization state reset to ASK.");
+				if (HavkPrivilegeManager.getInstance().isAlreadyRoot()) {
+					this.showWarning(
+						"Havk was launched with root privileges (EUID 0); /root-off cannot drop process privileges.",
+					);
+				} else {
+					this.showWarning("The /root-off command is unavailable because /root sessions are not supported.");
+				}
 				return;
 			}
 			if (text === "/resume") {
@@ -5694,6 +5700,7 @@ export class InteractiveMode {
 		options?: Parameters<ExtensionCommandContext["switchSession"]>[1],
 	): Promise<{ cancelled: boolean }> {
 		this.clearStatusIndicator();
+		HavkPrivilegeManager.getInstance().reset();
 		try {
 			const result = await this.runtimeHost.switchSession(sessionPath, {
 				withSession: options?.withSession,
@@ -6766,6 +6773,7 @@ export class InteractiveMode {
 
 	private async handleClearCommand(): Promise<void> {
 		this.clearStatusIndicator();
+		HavkPrivilegeManager.getInstance().reset();
 		try {
 			const result = await this.runtimeHost.newSession();
 			if (result.cancelled) {

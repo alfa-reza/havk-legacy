@@ -23,32 +23,34 @@
 
 | Gate | Capability | Result | Evidence Summary |
 |------|------------|--------|------------------|
-| **S0** | Environment & topology inventory | **PASS** | Complete environment, runtime, sudo, and topology mapped. |
-| **S1A** | Secure one-shot password sudo | **PASS** | On-demand askpass over private Unix domain socket; target runs at most once; NOPASSWD runs without prompt; secret zeroized. |
-| **S1B** | Cross-invocation native timestamp reuse | **FAIL (DEFERRED)** | Sudo timestamp is keyed by session/TTY. Detached execution (`setsid()`) gives each command a distinct session with no TTY, preventing timestamp sharing across detached invocations. |
+| **S0** | Environment & topology inventory | **PASS** | Complete environment, runtime, sudo-rs (`/usr/bin/sudo`) & C sudo (`/usr/bin/sudo.ws`), and detached topology mapped. |
+| **S1A** | Secure one-shot password sudo | **DEFERRED** | Under same-UID Linux execution, an askpass helper returning credentials on stdout can be accessed or executed directly by agent commands without privilege separation. Deferred per PRD §6 S1A & §27; mediated sudo ships for NOPASSWD and native credentials. |
+| **S1B** | Cross-invocation native timestamp reuse | **DEFERRED** | Sudo timestamp is keyed by session/TTY. Detached execution (`setsid()`) gives each command a distinct session with no TTY, preventing timestamp sharing across detached invocations. |
 | **S1C** | Non-interactive credential refresh | **DEFERRED** | Dependent on S1B. Proactive refresh without TTY cannot be proven without password retention (prohibited). Deferred per PRD §6 S1C & §7. |
-| **S2** | Privileged process lifecycle & cleanup | **PASS** | Coordinated signal sequence (`SIGTERM` -> grace -> `SIGKILL` -> privileged group kill if required) reliably terminates root target and privileged descendants. |
+| **S2** | Privileged process lifecycle & cleanup | **PARTIAL** | Coordinated signal sequence (`SIGTERM` -> `SIGKILL` -> privileged group kill if permitted) reaps target process group and children when remaining in the PGID; unprivileged Havk cannot signal arbitrary root processes that disassociate or change PGID if passwordless sudo kill is unavailable. |
 | **S3** | Final execution-context integrity | **PASS** | Binding approval at `resolveSpawnContext` ensures complete shell source, cwd, sanitized env (stripped `BASH_ENV`/`ENV`), and shell args match final execution. |
-| **S4** | Secure password-input isolation | **PASS** | `setSecureInput` on `TuiBase` captures terminal bytes before `inputListeners`, editor, shortcuts, or queues. Masked feedback (`*`). |
-| **S5** | ROOT_SESSION slash-command visibility | **DEFERRED** | Deferred alongside `ROOT_SESSION` per PRD §6 S1B & §7 rules. |
-| **S6** | Auth-routing integrity & askpass anti-oracle | **PASS** | Agent-authored `-S`, `-A`, `-k`, `-K`, `-v`, `-b`, `sudoedit`, `SUDO_ASKPASS` blocked. One-shot single-use random token with immediate socket closure prevents replay/oracles. |
+| **S4** | Sudo authorization state & approval dialog | **PASS** | Interactive approval dialog captures human consent (`Allow once`, `Allow for session`, `Deny`). `ALLOW_SUDO_SESSION` is scoped strictly to the logical session. |
+| **S5** | ROOT_SESSION slash-command visibility | **DEFERRED** | Deferred alongside `ROOT_SESSION` per PRD §6 S1B & §7 rules. `/root` is deferred and informs user; `/root-off` does not act as an unverified de-elevation command. |
+| **S6** | Auth-routing integrity & askpass anti-oracle | **FAIL / DEFERRED** | Agent-authored `-S`, `-A`, `-k`, `-K`, `-v`, `-b`, `sudoedit`, `SUDO_ASKPASS` are strictly blocked. However, same-UID askpass helper execution cannot be prevented from leaking credentials to an unprivileged child process without OS privilege separation. Password sudo is deferred; NOPASSWD mediation is supported. |
 | **S7** | Same-UID process-memory isolation posture | **LIMITED** | Yama `ptrace_scope=1` prevents same-UID sibling/child `/proc/<pid>/mem` access, but host-dependent. Classified `LIMITED` and documented honestly. |
-| **S8** | Explicit-sudo mediation coverage | **PASS** | Specialized command tokenizer covers all explicit sudo forms, aliases, prefixes, and reserved options while respecting `--`. |
-| **S9** | Sudo I/O-logging secret-persistence | **PASS** | Askpass helper output is piped to sudo's internal PAM routine, not target command stdin; secret is absent from sudo I/O logs. |
+| **S8** | Explicit-sudo mediation coverage | **PASS** | Specialized command tokenizer with POSIX dequoting (`removeQuotes`) and wrapper unwrapping (`command -p`, `command --`, `exec --`, `env -u`, `nice`, `time`, `builtin`, `nohup`) covers all explicit sudo forms and reserved options while respecting `--`. |
+| **S9** | Sudo I/O-logging secret-persistence | **NOT APPLICABLE** | Password-capable sudo over askpass is deferred; no passwords are submitted to sudo and no credential persistence occurs. |
 
 ---
 
 ## Architectural Decision
 
-In accordance with PRD §1.3, §6 S1B/S1C, §7, and §27:
+In accordance with PRD §1.3, §6 S1A/S1B/S1C/S6, §7, and §27:
 - **Shipped Capabilities**:
-  1. Default mediated explicit sudo approval in Local TUI (`ASK`).
+  1. Default mediated explicit sudo approval in Local Linux Bash (`ASK`).
   2. One-request approval (`Allow this sudo command`).
-  3. Session-wide approval (`Allow sudo for this session`, entering `ALLOW_SUDO_SESSION`).
-  4. On-demand one-shot askpass authentication routing with zeroized memory.
-  5. Isolated TUI masked password entry (`setSecureInput`).
-  6. Final execution-context approval binding and display sanitization (ANSI/bidi safe).
-  7. Strict reserved-option and askpass environment enforcement.
-  8. Reliable privileged lifecycle cleanup.
+  3. Session-wide approval (`Allow sudo for this session`, entering `ALLOW_SUDO_SESSION` committed only upon successful zero exit code).
+  4. Logical session isolation: state unconditionally resets to `ASK` on clear, new session, switch session, resume, tree navigation, and reload.
+  5. Final execution-context approval binding and display sanitization (ANSI/bidi safe and C1 control character neutralization).
+  6. Strict reserved-option and askpass environment enforcement.
+  7. Robust explicit sudo detection covering quotes and shell wrappers.
+  8. Privileged process lifecycle coordination (`SIGTERM` -> `SIGKILL` -> privileged group sweep).
+  9. Preservation of pre-feature semantics for PowerShell, non-Linux platforms, and custom/remote operations.
 - **Deferred Capabilities**:
-  - `ROOT_SESSION`, `/root`, and `/root-off` are deferred because S1B proved that native sudo timestamps under detached non-TTY process topology cannot be reused across subsequent invocations, and PRD §6 S1B/S1C explicitly prohibits retaining passwords or using a root daemon to simulate keepalive.
+  1. Password-capable sudo (S1A & S6) is deferred because same-UID askpass helper execution acts as a password oracle without kernel-level privilege separation (a non-goal). Sudo mediation remains fully functional for `NOPASSWD` and native credentials; commands requiring interactive passwords fail closed safely.
+  2. `ROOT_SESSION`, `/root`, and `/root-off` are deferred because S1B proved that native sudo timestamps under detached non-TTY process topology cannot be reused across subsequent invocations, and PRD §6 S1B/S1C explicitly prohibits retaining passwords or using a root daemon to simulate keepalive.
