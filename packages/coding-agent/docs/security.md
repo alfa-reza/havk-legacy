@@ -90,6 +90,17 @@ These practices do not replace isolation, but they reduce exposure or make recov
 - Review diffs and generated output before applying results to another system.
 - Review sessions before exporting or sharing them. They can contain prompts, tool arguments, command output, file contents, and credentials exposed during the conversation.
 
+## Local sudo mediation and privileged execution
+
+Havk provides mediated local sudo execution:
+
+- **Approval modes**: Explicit agent sudo commands require user approval (`ASK` by default) with options to deny, allow once, or allow for the remainder of the session (`ALLOW_SUDO_SESSION`). Session approval is in-memory only and resets on new/switch session, branch navigation, or reload.
+- **Isolated password input**: Sudo password entry uses an isolated terminal mode where keystrokes bypass ordinary input listeners, editors, history, and model transcripts. Input is masked with asterisks.
+- **Process memory posture (`LIMITED`)**: Credential buffers are zeroed at application level on completion or error as best-effort defense. However, operating-system-level process-memory isolation between same-UID processes is host-policy-dependent (governed by kernel ptrace/Yama policies such as `/proc/sys/kernel/yama/ptrace_scope`). Password retention across unattended commands is prohibited.
+- **Lifecycle cleanup**: Privileged processes are terminated using coordinated signal delivery (`SIGTERM` followed by `SIGKILL` and privileged sweeps) to avoid leaving orphaned root background processes upon cancellation or timeout.
+
+For complete Linux capability matrix and empirical gate results, see [Phase 0 Capability Matrix and Evidence](phase-0-evidence.md).
+
 ## Report a security issue
 
 Follow the repository [Security Policy](https://github.com/earendil-works/pi/blob/main/SECURITY.md). Do not open a public issue for a security-sensitive report.
