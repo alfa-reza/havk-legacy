@@ -111,6 +111,8 @@ import {
 import type { FullscreenExitOutput, TuiMode } from "../../core/settings-manager.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
+import { HavkPrivilegeManager } from "../../core/sudo/privilege-manager.ts";
+import type { SudoApprovalChoice } from "../../core/sudo/types.ts";
 import { isInstallTelemetryEnabled } from "../../core/telemetry.ts";
 import { withBuiltInRenderers } from "../../core/tools/renderers/index.ts";
 import type { TruncationResult } from "../../core/tools/truncate.ts";
@@ -152,6 +154,7 @@ import {
 	formatAuthSelectorProviderType,
 	OAuthSelectorComponent,
 } from "./components/oauth-selector.ts";
+import { PasswordPromptComponent } from "./components/password-prompt.ts";
 import { piLogoLines } from "./components/pi-logo.ts";
 import { ScopedModelsSelectorComponent } from "./components/scoped-models-selector.ts";
 import { SessionSelectorComponent } from "./components/session-selector.ts";
@@ -165,6 +168,7 @@ import {
 	type StatusIndicator,
 	WorkingStatusIndicator,
 } from "./components/status-indicator.ts";
+import { SudoApprovalDialogComponent } from "./components/sudo-approval-dialog.ts";
 import { ThemedText } from "./components/themed-text.ts";
 import { ThinkingSelectorComponent } from "./components/thinking-selector.ts";
 import { ToolExecutionComponent } from "./components/tool-execution.ts";
@@ -629,6 +633,14 @@ export class InteractiveMode {
 			showError: (message) => this.showError(message),
 			onChanged: () => this.updateEditorBorderColor(),
 			initialThemeSetting: options.initialThemeSetting,
+		});
+
+		// Register Havk Local Sudo handlers
+		HavkPrivilegeManager.getInstance().setApprovalHandler(async ({ commandText, signal }) => {
+			return this.promptSudoApproval(commandText, signal);
+		});
+		HavkPrivilegeManager.getInstance().setPasswordPromptHandler(async ({ isRetry, signal }) => {
+			return this.promptSudoPassword(isRetry, signal);
 		});
 	}
 
@@ -1919,6 +1931,7 @@ export class InteractiveMode {
 				waitForIdle: () => this.session.waitForIdle(),
 				newSession: async (options) => {
 					this.clearStatusIndicator();
+					HavkPrivilegeManager.getInstance().reset();
 					try {
 						return await this.runtimeHost.newSession(options);
 					} catch (error: unknown) {
@@ -1926,6 +1939,7 @@ export class InteractiveMode {
 					}
 				},
 				fork: async (entryId, options) => {
+					HavkPrivilegeManager.getInstance().reset();
 					try {
 						const result = await this.runtimeHost.fork(entryId, options);
 						if (!result.cancelled) {
@@ -1938,6 +1952,7 @@ export class InteractiveMode {
 					}
 				},
 				navigateTree: async (targetId, options) => {
+					HavkPrivilegeManager.getInstance().reset();
 					const result = await this.session.navigateTree(targetId, {
 						summarize: options?.summarize,
 						customInstructions: options?.customInstructions,
@@ -1958,6 +1973,7 @@ export class InteractiveMode {
 					return { cancelled: false };
 				},
 				switchSession: async (sessionPath, options) => {
+					HavkPrivilegeManager.getInstance().reset();
 					return this.handleResumeSession(sessionPath, options);
 				},
 				reload: async () => {
@@ -3207,6 +3223,19 @@ export class InteractiveMode {
 			if (text === "/dementedelves") {
 				this.handleDementedDelves();
 				this.editor.setText("");
+				return;
+			}
+			if (text === "/root" || text.startsWith("/root ")) {
+				this.editor.setText("");
+				this.showWarning(
+					"ROOT_SESSION is deferred because cross-process timestamp reuse is unavailable. Use ALLOW_SUDO_SESSION via the sudo approval dialog instead.",
+				);
+				return;
+			}
+			if (text === "/root-off" || text.startsWith("/root-off ")) {
+				this.editor.setText("");
+				HavkPrivilegeManager.getInstance().reset();
+				this.showStatus("Privilege authorization state reset to ASK.");
 				return;
 			}
 			if (text === "/resume") {
@@ -5042,6 +5071,44 @@ export class InteractiveMode {
 		});
 	}
 
+	private promptSudoApproval(commandText: string, signal?: AbortSignal): Promise<SudoApprovalChoice> {
+		return new Promise((resolve) => {
+			this.showSelector((done) => {
+				const dialog = new SudoApprovalDialogComponent({
+					tui: this.ui,
+					commandText,
+					signal,
+					onSelect: (choice) => {
+						done();
+						resolve(choice);
+					},
+				});
+				return { component: dialog, focus: dialog };
+			});
+		});
+	}
+
+	private promptSudoPassword(isRetry: boolean, signal?: AbortSignal): Promise<Buffer | null> {
+		return new Promise((resolve) => {
+			this.showSelector((done) => {
+				const prompt = new PasswordPromptComponent({
+					tui: this.ui,
+					isRetry,
+					signal,
+					onSubmit: (pwd) => {
+						done();
+						resolve(pwd);
+					},
+					onCancel: () => {
+						done();
+						resolve(null);
+					},
+				});
+				return { component: prompt, focus: prompt };
+			});
+		});
+	}
+
 	private async handleModelCommand(searchTerm?: string): Promise<void> {
 		if (!searchTerm) {
 			this.showModelSelector();
@@ -6190,6 +6257,7 @@ export class InteractiveMode {
 		}
 
 		this.resetExtensionUI();
+		HavkPrivilegeManager.getInstance().reset();
 
 		const reloadBox = new Container();
 		const borderColor = (s: string) => theme.fg("border", s);
@@ -6865,5 +6933,8 @@ export class InteractiveMode {
 			this.isInitialized = false;
 		}
 		this.unregisterSignalHandlers();
+		HavkPrivilegeManager.getInstance().setApprovalHandler(undefined);
+		HavkPrivilegeManager.getInstance().setPasswordPromptHandler(undefined);
+		HavkPrivilegeManager.getInstance().reset();
 	}
 }

@@ -16,7 +16,7 @@ import {
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
 import { AskpassService, type AskpassSession } from "../sudo/askpass-service.ts";
 import { detectSudo } from "../sudo/detector.ts";
-import { HavkPrivilegeManager } from "../sudo/privilege-manager.ts";
+import { type AuthorizationResult, HavkPrivilegeManager } from "../sudo/privilege-manager.ts";
 import { OutputAccumulator } from "./output-accumulator.ts";
 import { BASH_UPDATE_THROTTLE_MS, createShellRenderers } from "./renderers/bash.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
@@ -262,6 +262,7 @@ export function createShellToolDefinition(
 
 			// Havk Local Sudo Gate at final execution boundary
 			let askpassSession: AskpassSession | undefined;
+			let sudoAuth: AuthorizationResult | undefined;
 			const sudoDetection = detectSudo(spawnContext.command);
 			if (sudoDetection.hasSudo) {
 				if (sudoDetection.blocked) {
@@ -271,9 +272,9 @@ export function createShellToolDefinition(
 				delete spawnContext.env.BASH_ENV;
 				delete spawnContext.env.ENV;
 
-				const auth = await HavkPrivilegeManager.getInstance().requestAuthorization(spawnContext.command, signal);
-				if (!auth.approved) {
-					throw new Error(auth.reason ?? "Sudo access denied by the user.");
+				sudoAuth = await HavkPrivilegeManager.getInstance().requestAuthorization(spawnContext.command, signal);
+				if (!sudoAuth.approved) {
+					throw new Error(sudoAuth.reason ?? "Sudo access denied by the user.");
 				}
 
 				askpassSession = await AskpassService.createSession({ signal });
@@ -390,6 +391,18 @@ export function createShellToolDefinition(
 
 				const snapshot = await finishOutput();
 				const { text: outputText, details } = formatOutput(snapshot);
+
+				// State is committed only after the current request succeeds through required checks
+				const failedAuth = Boolean(
+					askpassSession &&
+						(askpassSession.isCanceled() ||
+							(exitCode !== 0 &&
+								/incorrect password|password is required|authentication failure/i.test(outputText))),
+				);
+				if (!signal?.aborted && !failedAuth && sudoAuth?.commitSession) {
+					sudoAuth.commitSession();
+				}
+
 				if (exitCode === null) {
 					throw new Error(appendStatus(outputText, "Command terminated without an exit code"));
 				}

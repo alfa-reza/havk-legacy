@@ -128,4 +128,45 @@ describe("Bash tool sudo approval boundary", () => {
 			/Agent-authored sudo stdin option/,
 		);
 	});
+
+	it("promotes to ALLOW_SUDO_SESSION only after successful execution, bypassing approval for subsequent commands", async () => {
+		const executedCommands: string[] = [];
+		const mockOps: BashOperations = {
+			exec: async (command) => {
+				executedCommands.push(command);
+				return { exitCode: 0 };
+			},
+		};
+
+		const manager = HavkPrivilegeManager.getInstance();
+		manager.reset();
+		let approvalPrompts = 0;
+		manager.setApprovalHandler(async () => {
+			approvalPrompts++;
+			return { decision: "allow-session" };
+		});
+
+		const tool = createBashTool(process.cwd(), {
+			operations: mockOps,
+		});
+
+		// First command prompts approval and selects allow-session
+		expect(manager.getState()).toBe("ASK");
+		await tool.execute("call-6", { command: "sudo apt update" });
+		expect(approvalPrompts).toBe(1);
+		expect(manager.getState()).toBe("ALLOW_SUDO_SESSION");
+
+		// Second command in same session bypasses approval
+		await tool.execute("call-7", { command: "sudo apt install -y curl" });
+		expect(approvalPrompts).toBe(1); // Not incremented!
+		expect(executedCommands).toEqual(["sudo apt update", "sudo apt install -y curl"]);
+
+		// Session reset restores ASK state
+		manager.reset();
+		expect(manager.getState()).toBe("ASK");
+
+		// Third command after reset requires approval again
+		await tool.execute("call-8", { command: "sudo systemctl status" });
+		expect(approvalPrompts).toBe(2);
+	});
 });

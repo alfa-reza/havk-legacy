@@ -90,6 +90,7 @@ export interface PasswordPromptOptions {
 	onSubmit: (password: Buffer) => void;
 	onCancel: () => void;
 	signal?: AbortSignal;
+	isRetry?: boolean;
 }
 
 /**
@@ -134,7 +135,9 @@ export class PasswordPromptComponent implements Component, Focusable {
 
 	render(width: number): string[] {
 		const border = theme.fg("border", "─".repeat(Math.max(1, width)));
-		const title = theme.fg("warning", theme.bold("Sudo authentication required"));
+		const title = this.options.isRetry
+			? theme.fg("error", theme.bold("Sudo authentication failed. Please try again:"))
+			: theme.fg("warning", theme.bold("Sudo authentication required"));
 		const label = "Sudo password:";
 		const mask = this.secretBuffer.getMask();
 		const hint = theme.fg("muted", "Press Esc to cancel");

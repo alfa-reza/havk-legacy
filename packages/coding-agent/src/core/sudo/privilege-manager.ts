@@ -28,6 +28,12 @@ export type SudoPasswordPromptHandler = (params: PasswordPromptParams) => Promis
 
 export type SudoApprovalHandler = (params: ApprovalPromptParams) => Promise<SudoApprovalChoice>;
 
+export interface AuthorizationResult {
+	approved: boolean;
+	reason?: string;
+	commitSession?: () => void;
+}
+
 export class HavkPrivilegeManager {
 	private static instance: HavkPrivilegeManager | undefined;
 
@@ -105,10 +111,7 @@ export class HavkPrivilegeManager {
 	/**
 	 * Request authorization for an approved execution context.
 	 */
-	async requestAuthorization(
-		commandText: string,
-		signal?: AbortSignal,
-	): Promise<{ approved: boolean; reason?: string }> {
+	async requestAuthorization(commandText: string, signal?: AbortSignal): Promise<AuthorizationResult> {
 		return this.withLock(async () => {
 			if (signal?.aborted) {
 				return { approved: false, reason: "aborted" };
@@ -136,11 +139,14 @@ export class HavkPrivilegeManager {
 				};
 			}
 
+			let commitSession: (() => void) | undefined;
 			if (result.decision === "allow-session") {
-				this.state = "ALLOW_SUDO_SESSION";
+				commitSession = () => {
+					this.state = "ALLOW_SUDO_SESSION";
+				};
 			}
 
-			return { approved: true };
+			return { approved: true, commitSession };
 		});
 	}
 }

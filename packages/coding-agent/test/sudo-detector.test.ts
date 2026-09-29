@@ -110,6 +110,9 @@ describe("HavkPrivilegeManager", () => {
 		manager.setApprovalHandler(async () => ({ decision: "allow-session" }));
 		const allowSessionResult = await manager.requestAuthorization("sudo apt update");
 		expect(allowSessionResult.approved).toBe(true);
+		expect(allowSessionResult.commitSession).toBeDefined();
+		expect(manager.getState()).toBe("ASK");
+		allowSessionResult.commitSession!();
 		expect(manager.getState()).toBe("ALLOW_SUDO_SESSION");
 
 		// In ALLOW_SUDO_SESSION, handler should not even be called

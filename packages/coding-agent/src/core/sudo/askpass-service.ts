@@ -23,6 +23,8 @@ export interface AskpassSession {
 	helperPath: string;
 	binDir: string;
 	env: Record<string, string>;
+	isCanceled(): boolean;
+	getAttempts(): number;
 	dispose(): Promise<void>;
 }
 
@@ -78,6 +80,7 @@ export async function createAskpassSession(options: AskpassSessionOptions = {}):
 	const tokenBuf = Buffer.from(token, "utf-8");
 	const maxAttempts = options.maxAttempts ?? 3;
 	let attempts = 0;
+	let canceled = false;
 	let activePasswordBuf: Buffer | null = null;
 	let disposed = false;
 
@@ -118,6 +121,7 @@ export async function createAskpassSession(options: AskpassSessionOptions = {}):
 				try {
 					const password = await prompter(isRetry);
 					if (!password || disposed) {
+						canceled = true;
 						conn.destroy();
 						return;
 					}
@@ -229,6 +233,8 @@ exec "${trustedSudo}" -A "$@"
 			SUDO_ASKPASS: helperPath,
 			PATH: `${binDir}:${process.env.PATH || ""}`,
 		},
+		isCanceled: () => canceled,
+		getAttempts: () => attempts,
 		dispose,
 	};
 }
