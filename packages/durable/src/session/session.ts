@@ -1,6 +1,6 @@
 import { type Context, type JsonValue, replicatedState } from "@earendil-works/chord";
 import { awaitWithContext, withoutAbortSignal } from "@earendil-works/chord/context";
-import { track } from "@earendil-works/chord/delta";
+import { type Op, track } from "@earendil-works/chord/delta";
 import {
 	type AnyDocToken,
 	checkRecordScope,
@@ -40,7 +40,7 @@ import { type LoadedDocument, Transaction, type TransactionHost } from "./transa
 
 /** Open a Session kernel over one storage backend. */
 export function createSession(storage: Storage): Session {
-	return new SessionKernel(storage);
+	return new SessionImpl(storage);
 }
 
 /**
@@ -49,7 +49,7 @@ export function createSession(storage: Storage): Session {
  * Only committed state is observable. Every commit callback, preparation, Storage settlement, adoption, and
  * publication enqueue runs while the line is held; listeners run later.
  */
-export class SessionKernel implements Session {
+export class SessionImpl implements Session {
 	readonly #storage: Storage;
 	readonly #documents = new Map<string, LoadedDocument>();
 	readonly #commitListeners = new Set<(publication: CommitPublication, context: Context) => void>();
@@ -81,6 +81,36 @@ export class SessionKernel implements Session {
 			return Promise.reject(error);
 		}
 		return this.#enqueue(() => this.#runCommit(change, context));
+	}
+
+	/**
+	 * Internal commit exposing the concrete transaction and its internal operations, such as the reserved-ID root
+	 * bootstrap and task replacement. `tx.createTask()` defaults to `defaultConversationId`.
+	 */
+	commitWith<T>(
+		change: (tx: Transaction) => T | Promise<T>,
+		context: Context,
+		defaultConversationId?: ConversationId,
+	): Promise<T> {
+		try {
+			this.#assertUsable();
+		} catch (error) {
+			return Promise.reject(error);
+		}
+		return this.#enqueue(() => this.#runCommit(change, context, defaultConversationId));
+	}
+
+	/** Internal: run a read-only job on the mutation line so multi-read derivations observe one committed state. */
+	readOnLine<T>(job: () => Promise<T>): Promise<T> {
+		try {
+			this.#assertUsable();
+		} catch (error) {
+			return Promise.reject(error);
+		}
+		return this.#enqueue(async () => {
+			this.#assertHealthy();
+			return job();
+		});
 	}
 
 	snapshot<T extends JsonObject>(token: SessionDocToken<T>, context: Context): Promise<Readonly<T> | undefined>;
@@ -116,12 +146,14 @@ export class SessionKernel implements Session {
 		const definition = token.definition;
 		const resolved = resolveAddress(definition, args);
 		const context = args[resolved.nextArgument] as Context;
+		const cached = this.#documents.get(resolved.id);
 		const loaded =
-			this.#documents.get(resolved.id) ??
-			(await this.#enqueue(async () => {
-				this.#assertHealthy();
-				return this.#loadDocument(definition, resolved.id, resolved.address, context);
-			}));
+			cached?.valueVersion === definition.version
+				? cached
+				: await this.#enqueue(async () => {
+						this.#assertHealthy();
+						return this.#loadDocument(definition, resolved.id, resolved.address, context);
+					});
 		if (loaded === undefined) return undefined;
 		checkRecordScope(definition, loaded.record);
 		checkRecordVersion(definition, loaded.record, loaded.storedVersion);
@@ -177,14 +209,11 @@ export class SessionKernel implements Session {
 					unsubscribeCommit();
 					unsubscribeClose();
 				});
+				const observed = { version: loaded.valueVersion };
 				unsubscribeCommit = this.subscribeCommits((publication, commitContext) => {
 					for (const change of publication.changes) {
 						if (change.type !== "document" || change.record.id !== loaded.record.id) continue;
-						source.advance(
-							change.value,
-							change.value === null ? RETIREMENT_OPERATIONS : change.ops,
-							withoutAbortSignal(commitContext),
-						);
+						source.advance(change.value, observedOperations(observed, change), withoutAbortSignal(commitContext));
 					}
 				});
 				unsubscribeClose = this.subscribeClose(() => source.closeSession());
@@ -255,14 +284,11 @@ export class SessionKernel implements Session {
 					unsubscribeCommit();
 					unsubscribeClose();
 				});
+				const observed = { version: loaded.valueVersion };
 				unsubscribeCommit = this.subscribeCommits((publication, commitContext) => {
 					for (const change of publication.changes) {
 						if (change.type !== "document" || change.record.id !== loaded.record.id) continue;
-						watch.advance(
-							change.value,
-							change.value === null ? RETIREMENT_OPERATIONS : change.ops,
-							commitContext,
-						);
+						watch.advance(change.value, observedOperations(observed, change), commitContext);
 					}
 				});
 				unsubscribeClose = this.subscribeClose(() => watch.closeSession());
@@ -330,15 +356,26 @@ export class SessionKernel implements Session {
 	close(context: Context): Promise<void> {
 		if (this.#closing === undefined) {
 			const cleanup = withoutAbortSignal(context);
-			this.#closing = this.#enqueue(async () => {
-				for (const listener of [...this.#closeListeners]) listener();
-				this.#closeListeners.clear();
-				this.#commitListeners.clear();
-				this.#documents.clear();
-				await this.#storage.close(cleanup);
-			});
+			// Seal admission before anything else runs, then stop observers; admitted work settles before Storage closes.
+			this.#closing = Promise.resolve()
+				.then(() => this.beforeClose())
+				.then(() =>
+					this.#enqueue(async () => {
+						this.#commitListeners.clear();
+						this.#documents.clear();
+						await this.#storage.close(cleanup);
+					}),
+				);
+			const listeners = [...this.#closeListeners];
+			this.#closeListeners.clear();
+			for (const listener of listeners) listener();
 		}
 		return awaitWithContext(this.#closing, context);
+	}
+
+	/** Runs after close seals admission and before the line closes Storage; must not reject. */
+	protected beforeClose(): Promise<void> {
+		return Promise.resolve();
 	}
 
 	/** Register a synchronous post-adoption listener. It must not throw, block, or call Session operations. */
@@ -348,7 +385,7 @@ export class SessionKernel implements Session {
 		return () => this.#commitListeners.delete(listener);
 	}
 
-	/** Register a synchronous close listener. It must not throw, block, or call Session operations. */
+	/** Register a listener called synchronously when close begins. It must not throw, block, or call Session operations. */
 	subscribeClose(listener: () => void): () => void {
 		this.#assertUsable();
 		this.#closeListeners.add(listener);
@@ -362,10 +399,14 @@ export class SessionKernel implements Session {
 		});
 	}
 
-	async #runCommit<T>(change: (tx: Tx) => T | Promise<T>, context: Context): Promise<T> {
+	async #runCommit<T>(
+		change: (tx: Transaction) => T | Promise<T>,
+		context: Context,
+		defaultConversationId?: ConversationId,
+	): Promise<T> {
 		this.#assertHealthy();
 		context.abortSignal?.throwIfAborted();
-		const tx = new Transaction(this.#host, context);
+		const tx = new Transaction(this.#host, context, defaultConversationId);
 		let result: T;
 		try {
 			result = await change(tx);
@@ -429,7 +470,9 @@ export class SessionKernel implements Session {
 		context: Context,
 	): Promise<LoadedDocument | undefined> {
 		const cached = this.#documents.get(addressId);
-		if (cached !== undefined) return cached;
+		// A tracker serves only tokens of the version its value was materialized for; others reload from Storage.
+		if (cached?.valueVersion === definition.version) return cached;
+		if (cached !== undefined) this.#documents.delete(addressId);
 		const record = await this.#storage.findDocument(address, "current", context);
 		if (record === undefined) return undefined;
 		const stored = await this.#storage.document(record.id, "current", context);
@@ -439,6 +482,8 @@ export class SessionKernel implements Session {
 			addressId,
 			record: stored.record,
 			storedVersion: stored.version,
+			valueVersion: definition.version,
+			deltasSinceBase: stored.deltasSinceBase,
 			tracker: track(value),
 		};
 		this.#documents.set(addressId, loaded);
@@ -466,6 +511,20 @@ export class SessionKernel implements Session {
 			});
 		}
 	}
+}
+
+/**
+ * Operations an observer applies for one committed change. An observer hydrated under another definition version holds
+ * a differently shaped value, so it receives the new value as a root replacement instead of operations for that shape.
+ */
+function observedOperations(
+	observed: { version: number },
+	change: Extract<DocumentCommitChange, { readonly type: "document" }>,
+): readonly Op[] {
+	if (change.value === null) return RETIREMENT_OPERATIONS;
+	if (change.version === observed.version) return change.ops;
+	observed.version = change.version!;
+	return [["r", change.value]];
 }
 
 function cancellationError(signal: AbortSignal): Error {

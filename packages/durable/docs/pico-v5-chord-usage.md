@@ -63,8 +63,8 @@ type CanvasState = { strokes: Stroke[] };
 const CanvasDoc = defineDoc<CanvasState>({
   kind: "app.canvas", version: 1, scope: "session",
   initial: () => ({ strokes: [] }),
-  // This append-only example adds one stroke per commit.
-  checkpointWhen: value => value.strokes.length % 100 === 0,
+  // Store a complete base after at most 99 replayed deltas.
+  checkpointWhen: (_value, _ops, info) => info.deltasSinceBase >= 99,
 });
 
 interface CanvasService {
@@ -126,10 +126,10 @@ async function runCanvasExample(session: Session): Promise<void> {
 The application owns the open Session. Acquire the document state asynchronously
 before synchronous `setup`, then transfer its disposal to the facet;
 `env.provide` cannot run in `onActivate`. Install one provider per
-Session host. Chord may reload presentation facets independently, but v1 does
-not use facet reload to replace Session-side task or hook implementations. A
-host extension code change closes and reopens the Harness with the new
-definition set.
+Session host. Chord may reload presentation facets independently. Session-side
+tools, hooks, tasks, and prompt sections reload through the Harness
+registry: publish the replacement in one `batch()`. Work already running keeps
+the old code, so the facet manages its old resources' lifetime itself.
 
 Remote clients supply a `RemoteServiceTransport` connected to the host's `services`
 provider; Chord prescribes no socket protocol. `CanvasConsumer` also works unchanged
@@ -182,7 +182,7 @@ const ReviewDoc = defineDocFamily<ReviewState, ReviewInput>({
   kind: "app.diff-review", version: 1, family: true, scope: "conversation",
   history: "latest", fork: "current",
   initial: seed => ({ path: seed.path, patch: seed.patch, comments: [] }),
-  checkpointWhen: value => value.comments.length % 50 === 0,
+  checkpointWhen: (_value, _ops, info) => info.deltasSinceBase >= 49,
 });
 interface DiffReviewService {
   readonly state: ReplicatedState<ReviewState | null>;
@@ -258,7 +258,7 @@ type JobOutput = { stdout: string; chunks: number };
 const JobOutputDoc = defineDoc<JobOutput>({
   kind: "app.job-output", version: 1, scope: "task",
   initial: () => ({ stdout: "", chunks: 0 }),
-  checkpointWhen: value => value.chunks % 100 === 0,
+  checkpointWhen: (_value, _ops, info) => info.deltasSinceBase >= 99,
 });
 async function appendJobOutput(
   runtime: TaskRuntime<JobInput, { phase: "running" }, null, {}>,
@@ -338,7 +338,7 @@ dynamic service should then withdraw its instance rather than expose stale data.
 
 ```text
 addStroke -> hold Session mutation line -> await tx.doc -> mutate tracker change draft
-callback succeeds -> tracker prepare: immutable candidate + frozen ops
+callback succeeds -> tracker prepare: immutable candidate + immutable ops
 Session checkpoint predicate selects a base or delta exactly once
 atomic storage commit: persist selected document and record writes
 storage succeeds -> adopt candidate + enqueue candidate/ops, still on line
@@ -365,8 +365,7 @@ continuing.
   one full-value root replacement. No serialized-byte accounting is performed.
   Do not use a watch as an audit log.
 - `stop()` prevents future callbacks but does not abort or join one already running.
-- Definitions own checkpoints, not storage heuristics. Revise the counting predicates
-  above if mutations change. Keep document kinds, versions, fork policies, and
+- Definitions own checkpoints, not storage heuristics. Keep document kinds, versions, fork policies, and
   public paths stable; schema changes require migration, not a source-only rename.
 
 Chord sources: [types](../../chord/src/types.ts), [facet examples](../../chord/test/facets.test.ts),
