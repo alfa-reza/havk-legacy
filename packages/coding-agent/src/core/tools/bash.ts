@@ -14,6 +14,7 @@ import {
 	untrackDetachedChildPid,
 } from "../../utils/shell.ts";
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
+import { AskpassService, type AskpassSession } from "../sudo/askpass-service.ts";
 import { detectSudo } from "../sudo/detector.ts";
 import { HavkPrivilegeManager } from "../sudo/privilege-manager.ts";
 import { OutputAccumulator } from "./output-accumulator.ts";
@@ -260,6 +261,7 @@ export function createShellToolDefinition(
 			);
 
 			// Havk Local Sudo Gate at final execution boundary
+			let askpassSession: AskpassSession | undefined;
 			const sudoDetection = detectSudo(spawnContext.command);
 			if (sudoDetection.hasSudo) {
 				if (sudoDetection.blocked) {
@@ -273,6 +275,10 @@ export function createShellToolDefinition(
 				if (!auth.approved) {
 					throw new Error(auth.reason ?? "Sudo access denied by the user.");
 				}
+
+				askpassSession = await AskpassService.createSession({ signal });
+				spawnContext.env.SUDO_ASKPASS = askpassSession.helperPath;
+				spawnContext.env.PATH = `${askpassSession.binDir}:${spawnContext.env.PATH || ""}`;
 			}
 
 			const output = new OutputAccumulator({ tempFilePrefix: config.tempFilePrefix });
@@ -393,6 +399,9 @@ export function createShellToolDefinition(
 				return { content: [{ type: "text", text: outputText }], details };
 			} finally {
 				clearUpdateTimer();
+				if (askpassSession) {
+					await askpassSession.dispose();
+				}
 			}
 		},
 		...createShellRenderers(config.prompt),

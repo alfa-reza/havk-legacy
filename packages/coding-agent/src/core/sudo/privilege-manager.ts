@@ -19,6 +19,13 @@ export interface ApprovalPromptParams {
 	signal?: AbortSignal;
 }
 
+export interface PasswordPromptParams {
+	isRetry: boolean;
+	signal?: AbortSignal;
+}
+
+export type SudoPasswordPromptHandler = (params: PasswordPromptParams) => Promise<Buffer | null>;
+
 export type SudoApprovalHandler = (params: ApprovalPromptParams) => Promise<SudoApprovalChoice>;
 
 export class HavkPrivilegeManager {
@@ -26,6 +33,7 @@ export class HavkPrivilegeManager {
 
 	private state: SudoAuthorizationState = "ASK";
 	private approvalHandler: SudoApprovalHandler | undefined;
+	private passwordPromptHandler: SudoPasswordPromptHandler | undefined;
 	private mutexQueue: Promise<void> = Promise.resolve();
 
 	static getInstance(): HavkPrivilegeManager {
@@ -53,6 +61,17 @@ export class HavkPrivilegeManager {
 
 	setApprovalHandler(handler: SudoApprovalHandler | undefined): void {
 		this.approvalHandler = handler;
+	}
+
+	setPasswordPromptHandler(handler: SudoPasswordPromptHandler | undefined): void {
+		this.passwordPromptHandler = handler;
+	}
+
+	async promptPassword(params: PasswordPromptParams): Promise<Buffer | null> {
+		if (!this.passwordPromptHandler) {
+			return null;
+		}
+		return this.passwordPromptHandler(params);
 	}
 
 	/**
