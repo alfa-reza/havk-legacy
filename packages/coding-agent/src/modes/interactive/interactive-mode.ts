@@ -638,7 +638,8 @@ export class InteractiveMode {
 	}
 
 	private getAutocompleteSourceTag(sourceInfo?: SourceInfo): string | undefined {
-		if (!sourceInfo) {
+		// Built-in extension commands are untagged, like built-in commands.
+		if (!sourceInfo || sourceInfo.source === "builtin") {
 			return undefined;
 		}
 
@@ -3503,6 +3504,8 @@ export class InteractiveMode {
 				break;
 
 			case "tool_execution_start": {
+				// Nested calls (from codemode scripts) are shown inside their parent's row.
+				if (event.parentToolCallId) break;
 				let component = this.pendingTools.get(event.toolCallId);
 				if (!component) {
 					component = new ToolExecutionComponent(
