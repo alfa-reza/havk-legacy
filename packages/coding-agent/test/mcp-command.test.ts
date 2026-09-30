@@ -130,13 +130,22 @@ describe(`${APP_NAME} mcp`, () => {
 		});
 
 		const oauth = await run(
-			["add", "sentry", "--url", "https://mcp.sentry.dev/mcp", "--oauth-client-id", "pi"],
+			[
+				"add",
+				"sentry",
+				"--url",
+				"https://mcp.sentry.dev/mcp",
+				"--oauth-client-id",
+				"pi",
+				"--oauth-client-name",
+				"Claude Code",
+			],
 			undefined,
 			agentDir,
 		);
 		expect(oauth.output).toContain(`If it requires sign-in: ${APP_NAME} mcp login sentry`);
 		expect(readConfig(join(agentDir, "mcp.json")).mcpServers).toMatchObject({
-			sentry: { url: "https://mcp.sentry.dev/mcp", oauth: { clientId: "pi" } },
+			sentry: { url: "https://mcp.sentry.dev/mcp", oauth: { clientId: "pi", clientName: "Claude Code" } },
 		});
 	});
 
