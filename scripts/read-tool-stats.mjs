@@ -6,7 +6,12 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 
-const DEFAULT_SESSIONS_DIR = path.join(homedir(), ".pi/agent/sessions");
+const DEFAULT_AGENT_DIR =
+	process.env.HAVK_CODING_AGENT_DIR ??
+	process.env.PI_CODING_AGENT_DIR ??
+	path.join(homedir(), ".havk", "agent");
+
+const DEFAULT_SESSIONS_DIR = path.join(DEFAULT_AGENT_DIR, "sessions");
 const DEFAULT_ACTIVE_READ_TOOL_PATH = path.join(process.cwd(), "packages/coding-agent/src/core/tools/read.ts");
 const DEFAULT_TOP = 20;
 const CHART_WIDTH = 40;
@@ -56,7 +61,7 @@ function printHelp() {
 	console.log(`Usage: node scripts/read-tool-stats.mjs [options]
 
 Options:
-  --sessions-dir <path>  Sessions directory (default: ~/.pi/agent/sessions)
+  --sessions-dir <path>  Sessions directory (default: ~/.havk/agent/sessions)
   --model <substring>    Filter provider/model by substring
   --top <n>              Number of examples to show (default: ${DEFAULT_TOP})
   --since <iso>          Only scan session files created at or after this ISO time

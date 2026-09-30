@@ -80,17 +80,25 @@ export function resolveModelSelection(
 }
 
 export function applyIsolatedEnvironment(home: string, agentDir: string): () => void {
-	const overrides = { HOME: home, USERPROFILE: home, PI_CODING_AGENT_DIR: agentDir };
+	const overrides = {
+		HOME: home,
+		USERPROFILE: home,
+		HAVK_CODING_AGENT_DIR: agentDir,
+		PI_CODING_AGENT_DIR: agentDir,
+	};
 	const previous = new Map<string, string | undefined>();
+
 	for (const name of Object.keys(process.env)) {
 		if (!name.startsWith("PI_EVAL_")) continue;
 		previous.set(name, process.env[name]);
 		delete process.env[name];
 	}
+
 	for (const [name, value] of Object.entries(overrides)) {
 		if (!previous.has(name)) previous.set(name, process.env[name]);
 		process.env[name] = value;
 	}
+
 	return () => {
 		for (const [name, value] of previous) {
 			if (value === undefined) delete process.env[name];
@@ -260,11 +268,13 @@ export function verifySystemPrompt(
 ): string {
 	if (options.expectedPiDocumentation === undefined) return systemPrompt;
 	if (!systemPrompt.includes("\n<rules>\n")) {
-		throw new Error(`Pi system prompt lost its rules in the ${options.name} eval variant.`);
+		throw new Error(`Coding-agent system prompt lost its rules in the ${options.name} eval variant.`);
 	}
-	const hasDocumentation = systemPrompt.includes("\n<docs>\nPi documentation (read only");
+	const hasDocumentation =
+		systemPrompt.includes("\n<docs>\n") &&
+		systemPrompt.includes("documentation (read only");
 	if (hasDocumentation !== options.expectedPiDocumentation) {
-		throw new Error(`Pi system prompt does not match the ${options.name} eval variant.`);
+		throw new Error(`Coding-agent system prompt does not match the ${options.name} eval variant.`);
 	}
 	return systemPrompt;
 }
@@ -283,7 +293,7 @@ async function runPiCodingAgent<TOutput extends JsonValue>(
 	const root = await mkdtemp(join(tmpdir(), "pi-eval-"));
 	const workspace = join(root, "workspace");
 	const isolatedHome = join(root, "home");
-	const agentDir = join(isolatedHome, ".pi", "agent");
+	const agentDir = join(isolatedHome, ".havk", "agent");
 	const extensionFactories: InlineExtension[] = [];
 	let forcedSystemPrompt: string | undefined;
 	if (options.transformSystemPrompt) {
@@ -495,11 +505,11 @@ export function excludePiDocumentation(defaultPrompt: string): string {
 	const documentationStartMarker = "\n<docs>\n";
 	const documentationEndMarker = "\n</docs>";
 	const documentationStart = defaultPrompt.indexOf(documentationStartMarker);
-	if (documentationStart === -1) throw new Error("Default Pi system prompt has no Pi documentation section.");
+	if (documentationStart === -1) throw new Error("Default system prompt has no documentation section.");
 	const documentationEnd = defaultPrompt.indexOf(documentationEndMarker, documentationStart);
-	if (documentationEnd === -1) throw new Error("Default Pi system prompt has no complete Pi documentation section.");
+	if (documentationEnd === -1) throw new Error("Default system prompt has no complete Pi documentation section.");
 	const cwdStart = defaultPrompt.lastIndexOf("\n<cwd>\n");
-	if (cwdStart < documentationEnd) throw new Error("Default Pi system prompt has no working-directory section.");
+	if (cwdStart < documentationEnd) throw new Error("Default system prompt has no working-directory section.");
 	return (
 		defaultPrompt.slice(0, documentationStart) + defaultPrompt.slice(documentationEnd + documentationEndMarker.length)
 	);

@@ -2,6 +2,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import { homedir } from "node:os";
 
 // Parse args
 const args = process.argv.slice(2);
@@ -35,7 +36,12 @@ function encodeSessionDir(dir: string): string {
 	return "--" + normalized.replace(/\//g, "-") + "--";
 }
 
-const sessionsBase = path.join(process.env.HOME!, ".pi/agent/sessions");
+const agentDir =
+	process.env.HAVK_CODING_AGENT_DIR ??
+	process.env.PI_CODING_AGENT_DIR ??
+	path.join(homedir(), ".havk", "agent");
+
+const sessionsBase = path.join(agentDir, "sessions");
 const encodedDir = encodeSessionDir(directory);
 const sessionsDir = path.join(sessionsBase, encodedDir);
 

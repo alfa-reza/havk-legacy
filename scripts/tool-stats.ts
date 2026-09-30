@@ -18,8 +18,13 @@ interface ToolCallInfo { toolName: string; bashCommand?: string }
 const BUCKETS = [0, 50, 100, 250, 500, 1000, 2000, 4000, 8000, 16000, 32000, Number.POSITIVE_INFINITY];
 
 function parseArgs(): { sessionsDir: string; output: string } {
-	let sessionsDir = join(homedir(), ".pi", "agent", "sessions");
-	let output = join(tmpdir(), "pi-tool-stats.html");
+  const agentDir =
+	process.env.HAVK_CODING_AGENT_DIR ??
+	process.env.PI_CODING_AGENT_DIR ??
+	join(homedir(), ".havk", "agent");
+
+  let sessionsDir = join(agentDir, "sessions");
+  let output = join(tmpdir(), "havk-tool-stats.html");
 	const args = process.argv.slice(2);
 	for (let i = 0; i < args.length; i++) {
 		const arg = args[i];

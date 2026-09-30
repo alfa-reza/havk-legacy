@@ -149,14 +149,14 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 			visibleTools.length > 0 ? visibleTools.map((name) => `- ${name}: ${toolSnippets[name]}`).join("\n") : "(none)";
 		promptSections.tools = `${tools}\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.`;
 		promptSections.rules = buildRules(selectedTools, toolGuidelines, promptGuidelines);
-		promptSections.docs = `Pi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):
-- Main documentation: ${getReadmePath()}
-- Additional docs: ${getDocsPath()}
-- Examples: ${getExamplesPath()} (extensions, custom tools, SDK)
-- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory
-- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md)
-- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing
-- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)`;
+		promptSections.docs = `${APP_NAME} documentation (read only when the user asks about ${APP_NAME} itself, its SDK, extensions, themes, skills, or TUI):
+	- Main documentation: ${getReadmePath()}
+	- Additional docs: ${getDocsPath()}
+	- Examples: ${getExamplesPath()} (extensions, custom tools, SDK)
+	- When reading ${APP_NAME} docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory
+	- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md)
+	- When working on ${APP_NAME} topics, read the docs and examples, and follow .md cross-references before implementing
+	- Always read ${APP_NAME} .md files completely and follow links to related docs (e.g., tui.md for TUI API details)`;
 	}
 
 	if (appendSystemPrompt) promptSections.addendum = appendSystemPrompt;

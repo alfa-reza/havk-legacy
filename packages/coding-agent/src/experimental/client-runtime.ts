@@ -6,7 +6,12 @@ import { isServerId, type ServerId } from "@earendil-works/pi-protocol";
 import type { ClientCommand } from "../cli/experimental/commands/client.ts";
 import { RadiusRelayAuthResolver } from "./radius-auth.ts";
 import { createRadiusClientTransportFactory, RadiusClientReconnect } from "./radius-relay.ts";
-import { activateServer, ENV_SERVER_ID, resolveServerDirectory, resolveSessionDirectory } from "./server.ts";
+import {
+	activateServer,
+	getServerIdFromEnvironment,
+	resolveServerDirectory,
+	resolveSessionDirectory,
+} from "./server.ts";
 import { AgentController } from "./services/agent-controller.ts";
 import {
 	createServerServiceSource,
@@ -45,7 +50,7 @@ export interface ClientRuntime {
 }
 
 export interface OpenClientRuntimeOptions {
-	/** Directory searched when --connect is omitted. Defaults to PI_SERVER_DIR or ~/.pi/server. */
+	/** Directory searched when --connect is omitted. Defaults to HAVK_SERVER_DIR or ~/.havk/server, with PI_SERVER_DIR accepted as a legacy fallback. */
 	readonly directory?: string;
 }
 
@@ -83,7 +88,7 @@ export async function openClientRuntime(
 		if (routes.length === 0) {
 			const activated = await activateServer({
 				directory,
-				requestedServerId: process.env[ENV_SERVER_ID],
+				requestedServerId: getServerIdFromEnvironment(),
 				sessionDir: resolveSessionDirectory(),
 				provider: command.provider,
 				model: command.model,
