@@ -109,6 +109,8 @@ describe(`${APP_NAME} mcp`, () => {
 				"X-Team=core",
 				"--exposure",
 				"direct",
+				"--description",
+				"Product docs",
 			],
 			{ fixture: servers.fixture },
 		);
@@ -122,6 +124,7 @@ describe(`${APP_NAME} mcp`, () => {
 					// biome-ignore lint/suspicious/noTemplateCurlyInString: literal config value reference
 					headers: { "X-Team": "core", Authorization: "Bearer ${DOCS_TOKEN}" },
 					exposure: "direct",
+					description: "Product docs",
 				},
 			},
 		});
