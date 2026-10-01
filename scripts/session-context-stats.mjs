@@ -6,9 +6,14 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 
-const DEFAULT_SESSIONS_DIR = path.join(homedir(), ".pi/agent/sessions");
+const DEFAULT_AGENT_DIR =
+	process.env.HAVK_CODING_AGENT_DIR ??
+	process.env.PI_CODING_AGENT_DIR ??
+	path.join(homedir(), ".havk", "agent");
+
+const DEFAULT_SESSIONS_DIR = path.join(DEFAULT_AGENT_DIR, "sessions");
 const MODELS_GENERATED_PATH = path.join(process.cwd(), "packages/ai/src/models.generated.ts");
-const MODELS_CONFIG_PATH = path.join(homedir(), ".pi/agent/models.json");
+const MODELS_CONFIG_PATH = path.join(DEFAULT_AGENT_DIR, "models.json");
 const REPORT_TIME_ZONE = "Europe/Berlin";
 const CHART_WIDTH = 40;
 
@@ -37,7 +42,7 @@ function printHelp() {
 	console.log(`Usage: node scripts/session-context-stats.mjs [options]
 
 Options:
-  --sessions-dir <path>  Sessions directory (default: ~/.pi/agent/sessions)
+  --sessions-dir <path>  Sessions directory (default: ~/.havk/agent/sessions)
   --model <substring>    Filter provider/model by substring
   --model-prefix <p>     Include provider/model prefixes, repeatable, e.g. openai-codex/
   --bash-contains <text> Include only sessions with bash tool calls containing text, repeatable

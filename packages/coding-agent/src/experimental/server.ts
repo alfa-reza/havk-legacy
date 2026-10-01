@@ -24,7 +24,7 @@ import {
 import { createUnixServer, getUnixSocketPath } from "@earendil-works/pi-server/unix";
 import lockfile from "proper-lockfile";
 import type { AuthInput } from "../cli/experimental/command-options.ts";
-import { getAgentDir } from "../config.ts";
+import { APP_NAME, CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
 import { resolvePath } from "../utils/paths.ts";
 import { CoordinatorConnection, type CoordinatorStartupLease, ensureCoordinator } from "./coordinator.ts";
 import { createPresentationFacetData } from "./plugins/bundled.ts";
@@ -48,11 +48,23 @@ import { createExperimentalServerServices } from "./services/server.ts";
 import type { SessionCreateOptions, SessionSummary } from "./services/sessions.ts";
 import { SessionPluginSelectionConflictError, SessionWorkerManager } from "./session-worker-manager.ts";
 
-export const ENV_SERVER_DIR = "PI_SERVER_DIR";
-export const ENV_SERVER_ID = "PI_SERVER_ID";
+export const ENV_SERVER_DIR = `${APP_NAME.toUpperCase()}_SERVER_DIR`;
+export const ENV_SERVER_ID = `${APP_NAME.toUpperCase()}_SERVER_ID`;
+
+export const LEGACY_ENV_SERVER_DIR = "PI_SERVER_DIR";
+export const LEGACY_ENV_SERVER_ID = "PI_SERVER_ID";
+
+export function getServerIdFromEnvironment(): string | undefined {
+	return process.env[ENV_SERVER_ID] ?? process.env[LEGACY_ENV_SERVER_ID];
+}
 
 export function resolveServerDirectory(directory?: string): string {
-	return resolvePath(directory ?? process.env[ENV_SERVER_DIR] ?? join(homedir(), ".pi", "server"));
+  return resolvePath(
+	directory ??
+		process.env[ENV_SERVER_DIR] ??
+		process.env[LEGACY_ENV_SERVER_DIR] ??
+		join(homedir(), CONFIG_DIR_NAME, "server"),
+  );
 }
 
 export async function ensurePrivateServerDirectory(directory: string): Promise<void> {
@@ -331,9 +343,9 @@ export interface RunningServer {
 }
 
 export interface StartServerOptions {
-	/** Server profile and socket directory. Defaults to PI_SERVER_DIR or ~/.pi/server. */
+	/** Server profile and socket directory. Defaults to HAVK_SERVER_DIR or ~/.havk/server, with PI_SERVER_DIR accepted as a legacy fallback. */
 	readonly directory?: string;
-	/** Logical service ID. Defaults to PI_SERVER_ID or the directory's default-server-id. */
+	/** Logical service ID. Uses HAVK_SERVER_ID first, then legacy PI_SERVER_ID, then the directory's default-server-id. */
 	readonly serverId?: ServerId;
 	/** Durable session directory. Defaults to the experimental directory under the configured agent directory. */
 	readonly sessionDir?: string;
@@ -527,7 +539,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
 			? undefined
 			: { ...(options.provider === undefined ? {} : { provider: options.provider }), model: options.model };
 	const directory = resolveServerDirectory(options.directory);
-	const { serverId, release } = await acquireServerProfile(directory, options.serverId ?? process.env[ENV_SERVER_ID]);
+	const { serverId, release } = await acquireServerProfile(directory, options.serverId ?? getServerIdFromEnvironment());
 	const lifetime = new ServerLifetime(options.keepAlive ?? true);
 	let backend: RunningServerBackend | undefined;
 	let coordinator: CoordinatorConnection | undefined;
@@ -712,7 +724,7 @@ export async function startForegroundServer(
 ): Promise<RunningServer> {
 	const directory = resolveServerDirectory(options.directory);
 	await ensurePrivateServerDirectory(directory);
-	const profile = await acquireServerProfile(directory, options.serverId ?? process.env[ENV_SERVER_ID]);
+	const profile = await acquireServerProfile(directory, options.serverId ?? getServerIdFromEnvironment());
 	const serverId = profile.serverId;
 	await profile.release();
 	const release = await acquireServerActivation(directory, serverId);

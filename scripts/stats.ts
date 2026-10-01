@@ -115,7 +115,12 @@ function parseArgs(): Args {
 	const args = process.argv.slice(2);
 	let days = 7;
 	let cwd = process.cwd();
-	let sessionsBase = join(homedir(), ".pi", "agent", "sessions");
+	const agentDir =
+		process.env.HAVK_CODING_AGENT_DIR ??
+		process.env.PI_CODING_AGENT_DIR ??
+		join(homedir(), ".havk", "agent");
+
+	let sessionsBase = join(agentDir, "sessions");
 
 	for (let i = 0; i < args.length; i++) {
 		const arg = args[i];
@@ -131,7 +136,7 @@ function parseArgs(): Args {
 Options:
   -n, --days <days>         Number of local calendar days to include (default: 7)
   -d, --dir, --cwd <path>   Project cwd to inspect (default: current cwd)
-  --sessions-base <path>    Sessions base directory (default: ~/.pi/agent/sessions)
+  --sessions-base <path>    Sessions base directory (default: ~/.havk/agent/sessions)
   -h, --help                Show this help`);
 			process.exit(0);
 		}

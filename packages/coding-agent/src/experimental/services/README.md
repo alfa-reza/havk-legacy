@@ -9,7 +9,7 @@ PI_EXPERIMENTAL=1 ./pi-test.sh server
 PI_EXPERIMENTAL=1 ./pi-test.sh client
 ```
 
-`PI_SERVER_DIR` overrides the server profile and socket directory, which defaults to `~/.pi/server`. `PI_SERVER_ID` selects the logical server ID when `--server-id` is omitted. The server, client, and experimental package subpaths are excluded from npm packages and standalone binaries.
+`HAVK_SERVER_DIR` overrides the server profile and socket directory, which defaults to `~/.havk/server`. `PI_SERVER_DIR` remains supported as a legacy fallback. `HAVK_SERVER_ID` selects the logical server ID when `--server-id` is omitted, with `PI_SERVER_ID` retained as a legacy fallback. The server, client, and experimental package subpaths are excluded from npm packages and standalone binaries.
 
 | Scope | Service | Current slice | Continuation point |
 |---|---|---|---|
