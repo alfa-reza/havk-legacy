@@ -116,7 +116,10 @@ describe("SettingsManager", () => {
 		it("creates one global device ID and reuses it in later processes", async () => {
 			const settingsPath = join(agentDir, "settings.json");
 			writeFileSync(settingsPath, JSON.stringify({ theme: "dark" }));
-			writeFileSync(join(projectDir, CONFIG_DIR_NAME, "settings.json"), JSON.stringify({ deviceId: "project-device" }));
+			writeFileSync(
+				join(projectDir, CONFIG_DIR_NAME, "settings.json"),
+				JSON.stringify({ deviceId: "project-device" }),
+			);
 			const first = SettingsManager.create(projectDir, agentDir);
 
 			const deviceId = first.getOrCreateDeviceId();
@@ -682,7 +685,10 @@ describe("SettingsManager", () => {
 		});
 
 		it("applies project modifiers to the built-in defaults without a global setting", () => {
-			writeFileSync(join(projectDir, CONFIG_DIR_NAME, "settings.json"), JSON.stringify({ defaultTools: ["+codemode"] }));
+			writeFileSync(
+				join(projectDir, CONFIG_DIR_NAME, "settings.json"),
+				JSON.stringify({ defaultTools: ["+codemode"] }),
+			);
 
 			expect(SettingsManager.create(projectDir, agentDir).getDefaultTools()).toEqual([
 				"read",

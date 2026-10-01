@@ -12,6 +12,7 @@ import {
 } from "@earendil-works/pi-mcp";
 import { createInMemoryTransportPair, type InMemoryTransport } from "@earendil-works/pi-mcp/testing";
 import { afterEach, describe, expect, it } from "vitest";
+import { CONFIG_DIR_NAME } from "../src/config.ts";
 import { InMemoryAuthStorageBackend } from "../src/core/auth-storage.ts";
 import { truncateMiddle } from "../src/core/tools/truncate.ts";
 import { getMcpToolExposure, loadMcpConfig, type McpServerEntry } from "../src/extensions/mcp/config.ts";
@@ -23,7 +24,6 @@ import {
 	McpServerLog,
 } from "../src/extensions/mcp/runtime.ts";
 import { convertMcpResult, createMcpToolName } from "../src/extensions/mcp/tools.ts";
-import { CONFIG_DIR_NAME } from "../src/config.ts";
 
 // Config values are resolved at connect time, so the literal reference must survive loading.
 // biome-ignore lint/suspicious/noTemplateCurlyInString: literal config value reference

@@ -164,10 +164,14 @@ export function sanitizeBinaryOutput(str: string): string {
  * Detached child processes must be tracked so they can be killed on parent
  * shutdown signals (SIGHUP/SIGTERM).
  */
-const trackedDetachedChildPids = new Set<number>();
+export interface KillProcessTreeOptions {
+	isSudo?: boolean;
+}
 
-export function trackDetachedChildPid(pid: number): void {
-	trackedDetachedChildPids.add(pid);
+const trackedDetachedChildPids = new Map<number, KillProcessTreeOptions | undefined>();
+
+export function trackDetachedChildPid(pid: number, options?: KillProcessTreeOptions): void {
+	trackedDetachedChildPids.set(pid, options);
 }
 
 export function untrackDetachedChildPid(pid: number): void {
@@ -175,16 +179,24 @@ export function untrackDetachedChildPid(pid: number): void {
 }
 
 export function killTrackedDetachedChildren(): void {
-	for (const pid of trackedDetachedChildPids) {
-		killProcessTree(pid);
+	for (const [pid, options] of trackedDetachedChildPids) {
+		killProcessTree(pid, options);
 	}
 	trackedDetachedChildPids.clear();
 }
 
 /**
- * Kill a process and all its children (cross-platform)
+ * Kill a process and all its children (cross-platform).
+ *
+ * Implements PRD §5 S2 coordinated termination:
+ * On Unix/Linux:
+ * 1. Send SIGTERM first so parent wrappers (e.g. sudo) can catch the signal and forward
+ *    it to privileged foreground/background children.
+ * 2. Send SIGKILL to the process group to terminate stubborn processes.
+ * 3. If isSudo is true, run sudo -n kill -KILL -<pid> as a final privileged sweep
+ *    against reparented root descendants that unprivileged kill cannot signal.
  */
-export function killProcessTree(pid: number): void {
+export function killProcessTree(pid: number, options?: KillProcessTreeOptions): void {
 	if (process.platform === "win32") {
 		// Use the trusted System32 executable so cleanup does not depend on PATH.
 		try {
@@ -203,15 +215,38 @@ export function killProcessTree(pid: number): void {
 			// Ignore errors if taskkill fails.
 		}
 	} else {
-		// Use SIGKILL on Unix/Linux/Mac
+		// 1. Send SIGTERM to process group so wrappers catch and relay to children
+		try {
+			process.kill(-pid, "SIGTERM");
+		} catch {
+			try {
+				process.kill(pid, "SIGTERM");
+			} catch {
+				// Process already dead
+				return;
+			}
+		}
+
+		// 2. Send SIGKILL to process group and pid
 		try {
 			process.kill(-pid, "SIGKILL");
 		} catch {
-			// Fallback to killing just the child if process group kill fails
 			try {
 				process.kill(pid, "SIGKILL");
 			} catch {
 				// Process already dead
+			}
+		}
+
+		// 3. Privileged sweep for sudo commands with potential orphaned root descendants
+		if (options?.isSudo) {
+			try {
+				spawnSync("sudo", ["-n", "kill", "-KILL", `-${pid}`], {
+					stdio: "ignore",
+					windowsHide: true,
+				});
+			} catch {
+				// Ignore errors if sudo kill is not permitted non-interactively
 			}
 		}
 	}

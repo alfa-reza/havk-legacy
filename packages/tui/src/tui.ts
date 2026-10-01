@@ -479,6 +479,7 @@ export interface TUI extends Component {
 		timeoutMs: number;
 		onLateReply?: (colors: TerminalColors) => void;
 	}): Promise<TerminalColors>;
+	setSecureInput(handler: ((data: string) => void) | null): void;
 }
 
 export const VIEWPORT_TUI = Symbol.for("@earendil-works/pi-tui/viewport");
@@ -497,6 +498,7 @@ export abstract class TuiBase extends Container implements TUI {
 	public terminal: Terminal;
 	private focusedComponent: Component | null = null;
 	private inputListeners = new Set<TuiInputListener>();
+	private secureInputHandler: ((data: string) => void) | null = null;
 
 	/** Global callback for debug key (Shift+Ctrl+D). Called before input is forwarded to focused component. */
 	public onDebug?: () => void;
@@ -940,6 +942,10 @@ export abstract class TuiBase extends Container implements TUI {
 		this.inputListeners.delete(listener);
 	}
 
+	setSecureInput(handler: ((data: string) => void) | null): void {
+		this.secureInputHandler = handler;
+	}
+
 	onTerminalColorSchemeChange(listener: (scheme: TerminalColorScheme) => void): () => void {
 		this.terminalColorSchemeListeners.add(listener);
 		return () => {
@@ -969,6 +975,7 @@ export abstract class TuiBase extends Container implements TUI {
 
 	stop(options: TuiStopOptions = {}): void {
 		this.stopped = true;
+		this.secureInputHandler = null;
 		this.cancelRenderTimer();
 		if (this.terminalColorSchemeNotificationsEnabled) {
 			this.terminal.write("\x1b[?2031l");
@@ -1046,6 +1053,12 @@ export abstract class TuiBase extends Container implements TUI {
 			return;
 		}
 		if (this.consumeTerminalColorSchemeReport(data)) {
+			return;
+		}
+
+		if (this.secureInputHandler) {
+			this.secureInputHandler(data);
+			this.requestImmediateRender();
 			return;
 		}
 

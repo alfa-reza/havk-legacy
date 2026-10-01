@@ -2,8 +2,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runMcpCommand } from "../src/extensions/mcp/cli.ts";
 import { APP_NAME, CONFIG_DIR_NAME } from "../src/config.ts";
+import { runMcpCommand } from "../src/extensions/mcp/cli.ts";
 
 const FIXTURE = resolve(import.meta.dirname, "../../mcp/test/fixtures/stdio-server.mjs");
 

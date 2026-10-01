@@ -92,6 +92,18 @@ These practices do not replace isolation, but they reduce exposure or make recov
 - Review diffs and generated output before applying results to another system.
 - Review sessions before exporting or sharing them. They can contain prompts, tool arguments, command output, file contents, and credentials exposed during the conversation.
 
+## Local sudo mediation and privileged execution
+
+Havk provides mediated local sudo execution for Local Linux Bash:
+
+- **Approval modes**: Explicit agent sudo commands require user approval (`ASK` by default) with options to deny, allow once, or allow for the remainder of the session (`ALLOW_SUDO_SESSION`). Session approval is in-memory only and resets unconditionally on new session, switch session, resume, branch navigation, or reload. `ALLOW_SUDO_SESSION` is committed only upon zero-exit command success.
+- **Scope**: Sudo mediation is strictly scoped to local Linux Bash execution. Non-Linux platforms, PowerShell, and custom/remote backends preserve their pre-feature semantics without interception.
+- **Authentication**: Sudo mediation supports NOPASSWD execution and native valid credentials. Password-capable sudo over askpass is deferred in userland mode because same-UID child processes cannot be prevented from executing the helper or extracting tokens without OS-level privilege separation. Commands requiring interactive password entry fail closed safely without exposing credentials.
+- **Display sanitization**: Commands presented in approval dialogs are sanitized against terminal control escapes (including 7-bit CSI and 8-bit C1 CSI U+009B), C0/C1 control codes, carriage return/backspace spoofing, and Unicode bidirectional formatting characters.
+- **Lifecycle cleanup**: Privileged processes are signaled using coordinated process-group termination (`SIGTERM` followed by `SIGKILL` and privileged group sweeps).
+
+For complete Linux capability matrix and empirical gate results, see [Phase 0 Capability Matrix and Evidence](phase-0-evidence.md).
+
 ## Report a security issue
 
 Follow the repository [Security Policy](https://github.com/earendil-works/pi/blob/main/SECURITY.md). Do not open a public issue for a security-sensitive report.

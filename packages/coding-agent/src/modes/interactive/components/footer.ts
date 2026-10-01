@@ -213,6 +213,9 @@ export class FooterComponent implements Component {
 		if (areExperimentalFeaturesEnabled()) {
 			statsParts.push(`${theme.fg("dim", "•")} ${theme.bold(theme.fg("warning", "xp"))}`);
 		}
+		if (typeof process.geteuid === "function" && process.geteuid() === 0) {
+			statsParts.push(`${theme.fg("dim", "•")} ${theme.bold(theme.fg("error", "ROOT"))}`);
+		}
 
 		let statsLeft = statsParts.join(" ");
 

@@ -14,6 +14,8 @@ import {
 	untrackDetachedChildPid,
 } from "../../utils/shell.ts";
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
+import { detectSudo } from "../sudo/detector.ts";
+import { type AuthorizationResult, HavkPrivilegeManager } from "../sudo/privilege-manager.ts";
 import { OutputAccumulator } from "./output-accumulator.ts";
 import { BASH_UPDATE_THROTTLE_MS, createShellRenderers } from "./renderers/bash.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
@@ -123,11 +125,12 @@ export function createLocalShellOperations(shellName: string, resolveShellConfig
 				child.stdin?.on("error", () => {});
 				child.stdin?.end(command);
 			}
-			if (child.pid) trackDetachedChildPid(child.pid);
+			const isSudo = process.platform === "linux" && shellName === "bash" && detectSudo(command).hasSudo;
+			if (child.pid) trackDetachedChildPid(child.pid, { isSudo });
 			let timedOut = false;
 			let timeoutHandle: NodeJS.Timeout | undefined;
 			const onAbort = () => {
-				if (child.pid) killProcessTree(child.pid);
+				if (child.pid) killProcessTree(child.pid, { isSudo });
 			};
 
 			try {
@@ -135,7 +138,7 @@ export function createLocalShellOperations(shellName: string, resolveShellConfig
 				if (timeoutMs !== undefined) {
 					timeoutHandle = setTimeout(() => {
 						timedOut = true;
-						if (child.pid) killProcessTree(child.pid);
+						if (child.pid) killProcessTree(child.pid, { isSudo });
 					}, timeoutMs);
 				}
 				// Stream stdout and stderr.
@@ -225,6 +228,8 @@ export interface BashToolOptions {
 	exposeSessionEnvironment?: boolean;
 	/** Hook to adjust command, cwd, or env before execution */
 	spawnHook?: BashSpawnHook;
+	/** Explicitly enable or disable local sudo approval mediation */
+	enableSudoMediation?: boolean;
 }
 
 export type BashRenderState = {
@@ -276,6 +281,33 @@ export function createShellToolDefinition(
 				exposeSessionEnvironment,
 				ctx,
 			);
+
+			// Havk Local Sudo Gate at final execution boundary.
+			// Strictly scoped to Local Linux Bash execution: non-Linux platforms, PowerShell,
+			// custom operations, and remote backends are excluded.
+			let sudoAuth: AuthorizationResult | undefined;
+			const isLocalLinuxBash =
+				process.platform === "linux" &&
+				config.name === "bash" &&
+				(options?.enableSudoMediation ?? options?.operations === undefined);
+			const sudoDetection = isLocalLinuxBash
+				? detectSudo(spawnContext.command)
+				: { hasSudo: false, blocked: false, invocations: [] };
+
+			if (sudoDetection.hasSudo) {
+				if (sudoDetection.blocked) {
+					throw new Error(sudoDetection.blockReason);
+				}
+				// Sanitize startup environment injection variables for privileged execution
+				delete spawnContext.env.BASH_ENV;
+				delete spawnContext.env.ENV;
+
+				sudoAuth = await HavkPrivilegeManager.getInstance().requestAuthorization(spawnContext.command, signal);
+				if (!sudoAuth.approved) {
+					throw new Error(sudoAuth.reason ?? "Sudo access denied by the user.");
+				}
+			}
+
 			const output = new OutputAccumulator({ tempFilePrefix: config.tempFilePrefix });
 			let acceptingOutput = true;
 			let updateTimer: NodeJS.Timeout | undefined;
@@ -386,6 +418,12 @@ export function createShellToolDefinition(
 
 				const snapshot = await finishOutput();
 				const { text: outputText, details } = formatOutput(snapshot);
+
+				// State is committed only after the current request succeeds through required checks
+				if (!signal?.aborted && exitCode === 0 && sudoAuth?.commitSession) {
+					sudoAuth.commitSession();
+				}
+
 				if (exitCode === null) {
 					throw new Error(appendStatus(outputText, "Command terminated without an exit code"));
 				}
