@@ -105,6 +105,7 @@ export const codemodeRenderers: Pick<
 			}
 			component.addChild(new Spacer(1));
 			component.addChild(new Text(lines.join("\n"), 0, 0));
+		}
 
 		// Drop the "Script completed\nWall time ...\nOutput:\n" header. Rejected input (invalid options)
 		// has no header.
