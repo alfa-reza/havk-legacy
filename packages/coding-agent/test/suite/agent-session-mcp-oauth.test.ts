@@ -12,6 +12,7 @@ import { createMcpExtension } from "../../src/extensions/mcp/index.ts";
 import { McpOAuthCredentialStore } from "../../src/extensions/mcp/oauth.ts";
 import { createHarness, createTestUiContext, getMessageText, type Harness } from "./harness.ts";
 import { startOAuthMcpServer } from "./mcp-oauth-server.ts";
+import { APP_NAME } from "../../src/config.ts";
 
 describe("AgentSession MCP OAuth", () => {
 	const cleanups: (() => Promise<void> | void)[] = [];
@@ -157,7 +158,7 @@ describe("AgentSession MCP OAuth", () => {
 
 		const fallback = await setup("follow");
 		await fallback.harness.session.prompt("/mcp login issues");
-		expect(fallback.server.registrations.map((metadata) => metadata.client_name)).toEqual(["pi"]);
+		expect(fallback.server.registrations.map((metadata) => metadata.client_name)).toEqual([APP_NAME]);
 	});
 
 	it("adds the listening port to a callback URL without one", async () => {

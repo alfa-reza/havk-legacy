@@ -2,7 +2,8 @@
  * Presentation for the codemode tool.
  *
  * The call shows the script; the result lists the nested tool calls with their status as they
- * run, followed by the script output without the "Script completed" header. Nested calls are not
+ * run and the cost of its model calls, followed by the script output without the "Script completed"
+ * header. Nested calls are not
  * separate tool rows because they never reach the model as tool calls.
  */
 
@@ -29,6 +30,11 @@ function formatDuration(ms: number | undefined): string {
 	return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
 }
 
+/** Cents for larger amounts, two significant digits for the fractions of a cent classifier calls cost. */
+function formatCost(cost: number): string {
+	return `$${cost >= 0.01 ? cost.toFixed(2) : cost.toPrecision(2)}`;
+}
+
 function statusIcon(call: CodemodeNestedCall, theme: Theme): string {
 	switch (call.status) {
 		case "running":
@@ -51,6 +57,7 @@ function formatCall(call: CodemodeNestedCall, theme: Theme, expanded: boolean): 
 	let line = `${statusIcon(call, theme)} ${theme.fg("toolTitle", call.name)}`;
 	if (args) line += ` ${theme.fg("muted", args)}`;
 	if (duration) line += ` ${theme.fg("dim", duration)}`;
+	if (call.cost) line += ` ${theme.fg("dim", formatCost(call.cost))}`;
 	if (expanded && call.error) line += `\n    ${theme.fg("error", call.error.split("\n").join("\n    "))}`;
 	return line;
 }
@@ -105,6 +112,7 @@ export const codemodeRenderers: Pick<
 			}
 			component.addChild(new Spacer(1));
 			component.addChild(new Text(lines.join("\n"), 0, 0));
+		}
 
 		// Drop the "Script completed\nWall time ...\nOutput:\n" header. Rejected input (invalid options)
 		// has no header.
